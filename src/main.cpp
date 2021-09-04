@@ -70,15 +70,22 @@ epoll(Linux системы) и kqueue (FreeBSD). – примерно одина
 #include <unistd.h>
 #include <fcntl.h>
 //#include <sys/un.h>
+#include <sstream>
+#include <fstream>
 
 #define	GREEN "\033[1;38;5;2m"
 #define NO_C "\033[0m"
 
-void print_error(const std::string& str);
+void			print_error(const std::string& str);
+std::string		ret_str_open(const std::string& file);
 
 int	main()
 {
 	//создали сокет___________________________________________________
+	//int socket(int domain, int type, int protocol)
+	//IF_INET - IPv4 протоколы Интернет
+	//SOCK_STREAM - обеспечивает создание двусторонних надежных и последовательных
+	//				потоков байтов , поддерживающих соединения
 	int	ls = socket(AF_INET, SOCK_STREAM, 0);
 	if (ls == -1)
 	    print_error("socket");
@@ -94,17 +101,25 @@ int	main()
 	    print_error("setsockopt");
 
 	//сопостовление созданному сокету конкретного адреса________________
+	//int bind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen)
 	struct sockaddr_in  addr;
 
-	addr.sin_family = AF_INET; //семейство адресов (AF_INET это IP + порт)
+	addr.sin_family = AF_INET; //семейство адресов (IF_INET - IPv4 протоколы Интернет)
 	addr.sin_port = htons(8000); //номер портa (8000)
 	addr.sin_addr.s_addr = INADDR_ANY; //IP адрес (INADDR_ANY это 0.0.0.0 (все адреса))
-	if (0 != bind(ls, (struct sockaddr*) &addr, sizeof(addr))) //связываем сокет с конкретным адресом
+
+	if (-1 == bind(ls, (struct sockaddr*) &addr, sizeof(addr)))
+	{
+		close(ls);
         print_error("bind");
+	}
 
 	//переводим сокет в слушаюший режим_________________________________
 	if (-1 == listen(ls, 5))
+	{
+		close(ls);
         print_error("listen");
+	}
 
 	char			buf[1024];
 	int				result;
@@ -112,7 +127,7 @@ int	main()
 	int				cl_socket;
 	int				res;
     std::string		head;
-	std::string		msg;
+	std::string		body;
     std::string		response;
 
 	//множество дескрипторов_________________________________________
@@ -141,9 +156,9 @@ int	main()
 
 		//создаем выборку событий при изменений состояния файлового дескриптора
 		//(появление данных, доступных для чтения, запрос на соединение ...)
-		res = select(max_d + 1, &readfds, NULL, NULL, NULL);
 		//предыдущая выборка изменяется и в выборке
 		//остаются лишь те дескрипторы которых пощекотали
+		res = select(max_d + 1, &readfds, NULL, NULL, NULL);
 		//if (res < 1)
 
 		//если получили запрос от клиента__________________________________
@@ -171,27 +186,38 @@ int	main()
 				std::cout << GREEN << cl_socket << " result = " << result << NO_C << std::endl;
 				//____________________________________________________________________
 
+				//subject____________________
+				//Checking the value of errno is strictly forbidden after a read or a write operation.
+				//You server should have default error pages if none are provided.
+				//Your program should have a config file in argument or use a default path.
+				//You should be able to serve a fully static website.
+				//Client should be able to upload files.
+				//Your HTTP response status codes must be accurate.
+				//You need at least GET, POST, and DELETE methods.
+				//Your server can listen on multiple ports (See config file).
+				//___________________________
+
 				if (result > 0) //есть данные
 				{
 					buf[result] = '\0';
 					std::cout << buf << std::endl;
 
-					//тело ответа______________________________________________________
-					msg = "<h1>GOOd</h1>\n";
+					body = ret_str_open("www/index.nginx.html");
 
 					//header ответа____________________________________________________
 					head = "HTTP/1.1 200 OK\r\n";
     				head += "Content-Type: text/html; charset=UTF-8\r\n";
 					head += "Connection: close\r\n";
 					head += "Content-Length: ";
-					head += std::to_string(msg.length());
+					head += std::to_string(body.length());
 					head += "\r\n\r\n";
 
 					//итоговый ответ___________________________________________________
-					response = head + msg;
+					response = head + body;
 
 					//отправляем ответ_________________________________________________
     				result = send(cl_socket, response.c_str(), response.length() + 1, 0);
+
 					//shutdown(cl_socket, 2);
 				}
 				/*
@@ -213,4 +239,29 @@ void print_error(const std::string& str)
 {
     std::cerr << "webserver: " << str << ": " << strerror(errno) << std::endl;
     exit (1);
+}
+
+std::string		ret_str_open(const std::string& file)
+{
+	/*
+	std::stringstream my_str;
+	my_str << "lkjijk";
+	std::cout << my_str.str() << std::endl;
+	*/
+	std::string			str;
+	std::string			res_str;
+	std::ifstream		ifs(file);
+
+	if (!ifs)
+		//write correct
+		return ("error\n");
+	while (ifs)
+	{
+		getline(ifs, str);
+		res_str += str;
+		if (ifs)
+			res_str += "\n";
+	}
+	ifs.close();
+	return (res_str);
 }

@@ -1,5 +1,5 @@
 INCLUDE			= include
-NAME			= a.out
+NAME			= webserv
 SRC				= main.cpp
 
 SRCDIR			= src
