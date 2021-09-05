@@ -1,6 +1,6 @@
 INCLUDE			= include
 NAME			= webserv
-SRC				= main.cpp
+SRC				= main.cpp create_listen_socket.cpp
 
 SRCDIR			= src
 OBJDIR			= obj
@@ -15,8 +15,7 @@ $(OBJDIR):
 				mkdir -p $@
 
 $(OBJDIR)/%.o:	$(SRCDIR)/%.cpp | $(OBJDIR)
-				$(CC) -std=c++98 -c -MD $< -o $@
-				##$(CC) -std=c++98 -I$(INCLUDE) -c -MD $< -o $@
+				$(CC) -std=c++98 -I$(INCLUDE) -c -MD $< -o $@
 
 include $(wildcard $(OBJDIR)/*.d)
 

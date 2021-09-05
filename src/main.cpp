@@ -72,59 +72,63 @@ epoll(Linux системы) и kqueue (FreeBSD). – примерно одина
 //#include <sys/un.h>
 #include <sstream>
 #include <fstream>
+#include <ctime>
+#include <vector>
+#include "ft_webserv.hpp"
 
-#define	GREEN "\033[1;38;5;2m"
-#define NO_C "\033[0m"
+class	cl_socket
+{
+	private:
+		int		fd;
+		time_t	time_start;
 
-void			print_error(const std::string& str);
+	public:
+		cl_socket() : fd(0)
+		{ time(&time_start); }
+
+		cl_socket(int fd) : fd(fd)
+		{ time(&time_start); }
+
+		cl_socket(const cl_socket& oth)
+		{ *this = oth; }
+
+		~cl_socket() { }
+
+		cl_socket&	operator= (const cl_socket& oth)
+		{
+			this->fd = oth.fd;
+			this->time_start = oth.time_start;
+			return *this;
+		}
+		void	set_fd(int fd)
+		{ this->fd = fd; }
+
+		int		get_fd(void) const
+		{ return this->fd; }
+
+		void	set_time(void)
+		{ time(&time_start); }
+
+		time_t	get_time(void) const
+		{ return this->time_start; }
+};
+
+int				create_listen_socket(void);
 std::string		ret_str_open(const std::string& file);
 
 int	main()
 {
-	//создали сокет___________________________________________________
-	//int socket(int domain, int type, int protocol)
-	//IF_INET - IPv4 протоколы Интернет
-	//SOCK_STREAM - обеспечивает создание двусторонних надежных и последовательных
-	//				потоков байтов , поддерживающих соединения
-	int	ls = socket(AF_INET, SOCK_STREAM, 0);
-	if (ls == -1)
-	    print_error("socket");
+	//хранилище клиентских сокетов____________________________________
+	std::vector<cl_socket>				store;
+	std::vector<cl_socket>::iterator	it_store;
+	int									ls;
 
-	//перевод сокета в неблокирующий режим____________________________
-	//нужн перевести слушащий и клиентский сокет в данный режим_______
-	int	flags = fcntl(ls, F_GETFL);
-	fcntl(ls, F_SETFL, flags | O_NONBLOCK);
-
-	//установили флаг, для предотвращения залипаниz TCP порта__________
-	int	opt = 1;
-	if (-1 == setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
-	    print_error("setsockopt");
-
-	//сопостовление созданному сокету конкретного адреса________________
-	//int bind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen)
-	struct sockaddr_in  addr;
-
-	addr.sin_family = AF_INET; //семейство адресов (IF_INET - IPv4 протоколы Интернет)
-	addr.sin_port = htons(8000); //номер портa (8000)
-	addr.sin_addr.s_addr = INADDR_ANY; //IP адрес (INADDR_ANY это 0.0.0.0 (все адреса))
-
-	if (-1 == bind(ls, (struct sockaddr*) &addr, sizeof(addr)))
-	{
-		close(ls);
-        print_error("bind");
-	}
-
-	//переводим сокет в слушаюший режим_________________________________
-	if (-1 == listen(ls, 5))
-	{
-		close(ls);
-        print_error("listen");
-	}
+	ls = create_listen_socket();
 
 	char			buf[1024];
 	int				result;
 	int				max_d;
-	int				cl_socket;
+	int				fd_client;
 	int				res;
     std::string		head;
 	std::string		body;
@@ -132,10 +136,6 @@ int	main()
 
 	//множество дескрипторов_________________________________________
 	fd_set			readfds;
-
-	//хранилище клиентских сокетов____________________________________
-	std::vector<int>			store_fd;
-	std::vector<int>::iterator	it;
 
 	//мультиплексирование ввода-вывода
 	//select() poll() kqueue()
@@ -147,11 +147,13 @@ int	main()
 		FD_SET(ls, &readfds); //добавляем дескриптор в множество
 
 		//пробегаем по хранилищу клиентских сокетов для добавления их в множество
-		for(it = store_fd.begin(); it != store_fd.end(); ++it)
+		for(it_store = store.begin(); it_store != store.end(); ++it_store)
 		{
-			FD_SET(*it, &readfds); //добавляем дескриптор в множество
-			if (*it > max_d)
-				max_d = *it;
+			fd_client = cl_socket(*it_store).get_fd();
+
+			FD_SET(fd_client, &readfds); //добавляем дескриптор в множество
+			if (fd_client > max_d)
+				max_d = fd_client;
 		}
 
 		//создаем выборку событий при изменений состояния файлового дескриптора
@@ -164,26 +166,29 @@ int	main()
 		//если получили запрос от клиента__________________________________
 		if (FD_ISSET(ls, &readfds)) //дескриптор слушающий сокет есть в выборке
 		{
-			cl_socket = accept(ls, NULL, NULL); //получили сокет клиента,
+			fd_client = accept(ls, NULL, NULL); //получили сокет клиента,
 			//через который будет осуществлятся связь с клиентом
-			if (cl_socket == -1)
+			if (fd_client == -1)
 				print_error("accept");
-			store_fd.push_back(cl_socket); //сохранили сокет клиента
+			store.push_back(cl_socket(fd_client)); //save socket client
 		}
 
 		//пробегаем по хранилищу сокетов_____________________________________________
-		for(it = store_fd.begin(); it != store_fd.end(); ++it)
+		for(it_store = store.begin(); it_store != store.end(); ++it_store)
 		{
-			if (FD_ISSET(*it, &readfds)) //если дескриптор входит в множество
+			fd_client = cl_socket(*it_store).get_fd();
+
+			if (FD_ISSET(fd_client, &readfds)) //если дескриптор входит в множество
 			{
-				cl_socket = *it;
+				//save time
+				cl_socket(*it_store).set_time();
 
 				//читаем данные с клиентского сокета в buf____________________________
-				result = recv(cl_socket, buf, sizeof(buf) - 1, 0);
+				result = recv(fd_client, buf, sizeof(buf) - 1, 0);
 				//if (result == -1)
 
 				//debag_______________________________________________________________
-				std::cout << GREEN << cl_socket << " result = " << result << NO_C << std::endl;
+				std::cout << GREEN << fd_client << " result = " << result << NO_C << std::endl;
 				//____________________________________________________________________
 
 				//subject____________________
@@ -216,23 +221,17 @@ int	main()
 					response = head + body;
 
 					//отправляем ответ_________________________________________________
-    				result = send(cl_socket, response.c_str(), response.length() + 1, 0);
+    				result = send(fd_client, response.c_str(), response.length() + 1, 0);
 
 					//shutdown(cl_socket, 2);
 				}
-				/*
-				else if (result == 0)
-				{
-					store_fd.erase(it);
-					close(cl_socket);
-				}
-				*/
 			}
 		}
 	}
 	std::cout << "end" << std::endl;
     close (ls);
 	return (0);
+
 }
 
 void print_error(const std::string& str)
