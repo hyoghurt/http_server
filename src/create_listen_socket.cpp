@@ -1,9 +1,7 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include "ft_webserv.hpp"
+
+# define LISTEN_AD "127.0.0.1"
+# define LISTEN_PORT 8000
 
 int		create_listen_socket(void)
 {
@@ -37,8 +35,9 @@ int		create_listen_socket(void)
 	struct sockaddr_in  addr;
 
 	addr.sin_family = AF_INET; //семейство адресов (IF_INET - IPv4 протоколы Интернет)
-	addr.sin_port = htons(8000); //номер портa (8000)
-	addr.sin_addr.s_addr = INADDR_ANY; //IP адрес (INADDR_ANY это 0.0.0.0 (все адреса))
+	addr.sin_port = htons(LISTEN_PORT); //номер портa
+	addr.sin_addr.s_addr = inet_addr(LISTEN_AD);
+	//addr.sin_addr.s_addr = INADDR_ANY; //IP адрес (INADDR_ANY это 0.0.0.0 (все адреса))
 
 	if (-1 == bind(ls, (struct sockaddr*) &addr, sizeof(addr)))
 	{
@@ -54,5 +53,7 @@ int		create_listen_socket(void)
 		close(ls);
 		return (0);
 	}
+	std::cout << PINK << "________START LISTEN: ";
+	std::cout << LISTEN_AD << ":" << LISTEN_PORT << NO_C << '\n';
 	return (ls);
 }

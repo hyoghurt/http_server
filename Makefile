@@ -1,6 +1,9 @@
 INCLUDE			= include
 NAME			= webserv
-SRC				= main.cpp create_listen_socket.cpp
+SRC				= main.cpp \
+				  create_listen_socket.cpp \
+				  request.cpp \
+				  add.cpp
 
 SRCDIR			= src
 OBJDIR			= obj
