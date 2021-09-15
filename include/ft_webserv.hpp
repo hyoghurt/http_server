@@ -6,6 +6,8 @@
 # define PINK "\033[1;48;5;5m"
 # define NO_C "\033[0m"
 
+# define BUF_SIZE 1024
+
 # include <sys/types.h>
 # include <sys/socket.h>
 # include <sys/time.h>
@@ -31,5 +33,8 @@ std::string		ret_str_open(const std::string& file);
 void			debag_pring_request(const int& fd_client, const std::string& str);
 std::string		get_new_time(void);
 void			print_connect_info(int fd_cl, struct sockaddr_in addr_cl);
+void			read_cl_socket(Cl_socket cl_socket);
+void			create_fd_set(int &max_d, int &ls, std::vector<Cl_socket> &store, fd_set &readfds);
+void			add_fd_store(int &ls, std::vector<Cl_socket> &store);
 
 #endif

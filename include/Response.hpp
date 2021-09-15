@@ -1,8 +1,6 @@
 #ifndef RESPONSE_HPP
 # define RESPONSE_HPP
 
-class	Request;
-
 class	Response
 {
 	public:
