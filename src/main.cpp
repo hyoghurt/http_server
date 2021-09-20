@@ -1,53 +1,24 @@
-#include "ft_webserv.hpp"
+# define DEBUG
 
-int	main()
+#include "Webserver.hpp"
+#include "add_funct.hpp"
+
+int	main(int argc, char **argv)
 {
-	//слушающий сокет_________________________________________________
-	int									ls;
-	//хранилище клиентских сокетов____________________________________
-	std::vector<Cl_socket>				store;
-	std::vector<Cl_socket>::iterator	it_store;
-	//множество дескрипторов__________________________________________
-	fd_set								readfds;
-	fd_set								writefds;
-	//переменная для select___________________________________________
-	int									max_d;
+	Webserver				webserver;
+
+#ifdef DEBUG
+	webserver.makeServer("127.0.0.1", 8000);
+	webserver.makeServer("127.0.0.1", 9000);
+#endif
 
 	//читаем конфиг файл______________________________________________
 
-	//создаем слушающий сокет_________________________________________
-	ls = create_listen_socket();
+	if (-1 == webserver.createSocketListen())
+		return (1);
 
-	//мультиплексирование ввода-вывода select() poll() kqueue()
-	while(1)
-	{
-		//создаем множество___________________________________________
-		create_fd_set(max_d, ls, store, readfds);
+	if (-1 == webserver.start())
+		return (1);
 
-		//создаем выборку файловых дескрипторов_______________________
-		if (select(max_d + 1, &readfds, NULL, NULL, NULL) < 1)
-		{
-			std::cout << RED << "Select < 1" << NO_C << '\n';
-			print_error("select");
-			continue ;
-		}
-
-		//получили запрос от нового клиента___________________________
-		if (FD_ISSET(ls, &readfds))
-			add_fd_store(ls, store);
-
-		//пробегаем по хранилищу сокетов______________________________
-		for(it_store = store.begin(); it_store != store.end(); ++it_store)
-		{
-			//имеются данные на чтение от клиента_____________________
-			if (FD_ISSET(Cl_socket(*it_store).fd, &readfds))
-				read_cl_socket(Cl_socket(*it_store));
-			/*
-			if (FD_ISSET(cl_socket.fd, &writefds))
-    			//result = send(fd_client, response.c_str(), response.length() + 1, 0);
-			*/
-		}
-	}
-    close (ls);
 	return (0);
 }
