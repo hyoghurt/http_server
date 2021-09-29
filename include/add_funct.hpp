@@ -7,6 +7,7 @@
 # include <sys/time.h>
 # include "def_color.hpp"
 # include <arpa/inet.h> //sockaddr_in
+# include <cstring> //strerror
 
 void			print_error(const std::string& str);
 void			print_connect_info(int socket_listen, int fd_cl, struct sockaddr_in addr_cl);

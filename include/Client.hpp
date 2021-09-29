@@ -8,6 +8,7 @@
 class	Client
 {
 	public:
+		/*
 		Client()
 		{
 			socket = 0;
@@ -15,24 +16,29 @@ class	Client
 			request = "";
 			response = "";
 		}
+		*/
 
-		Client(const int& socket) : socket(socket)
+		Client(const int& socket, std::vector<Server>& server) : socket(socket), server(server)
 		{
 			time(&timeStart);
 			request = "";
 			response = "";
 		}
 
+		/*
 		Client(const Client& oth)	{ *this = oth; }
+		*/
 
 		~Client()					{ }
 
+		/*
 		Client&	operator= (const Client& oth)
 		{
 			this->socket = oth.socket;
 			this->timeStart = oth.timeStart;
 			return *this;
 		}
+		*/
 
 		int		getSocket(void) const
 		{ return this->socket; }
@@ -171,6 +177,7 @@ class	Client
 				//return (response_step_1(jsn));
 			}
 			
+			*/
 			std::map<std::string, std::string>	return_map_request(const std::string &request)
 			{
 				size_t								pos;
@@ -217,16 +224,17 @@ class	Client
 			
 				return (jsn);
 			}
-			*/
 
 
-	private:
-		int			socket;
-		time_t		timeStart;
-		std::string	request;
-		std::string	response;
-		char		buf[BUF_SIZE];
-		int			readByte;
+	public:
+		int						socket;
+		time_t					timeStart;
+		std::string				request;
+		std::string				response;
+		char					buf[BUF_SIZE];
+		int						readByte;
+		std::vector<Server>&	server;
+		std::map<std::string, std::string>	jsn_request;
 };
 
 #endif

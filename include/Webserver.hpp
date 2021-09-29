@@ -21,38 +21,127 @@ class	Webserver
 {
 	public:
 		Webserver() {}
+		/*
 		Webserver(const Webserver& oth) { *this = oth; }
-		~Webserver() {}
+		*/
+		~Webserver()
+		{
+			std::vector<int>::iterator	it;
 
+			for (it = listenSocket.begin(); it != listenSocket.end(); ++it)
+			{
+				std::cout << "Webserver: Close socket listen: " << *it << std::endl;
+				close (*it);
+			}
+		}
+
+		/*
 		Webserver&	operator= (const Webserver& oth)
 		{
 			this->server = oth.server;
 			this->client = oth.client;
+			this->listenSocket = oth.listenSocket;
 			return *this;
 		}
+		*/
 
 		//debag_______________________________________________________
-		void		makeServer(const std::string& ip, const int& port)
+		void		makeServer(Server& serv)
 		{
-			Server	serv;
-
-			serv.setIpAddress(ip);
-			serv.setPort(port);
-
 			server.push_back(serv);
 		}
 		//____________________________________________________________
 
+
 		int			createSocketListen(void)
 		{
 			std::vector<Server>::iterator	it;
+			std::vector<int>::iterator		it_int;
+			std::string						ip;
+			int								port;
+			int								socketListen;
 
 			for (it = server.begin(); it != server.end(); ++it)
 			{
-				if (-1 == (*it).createSocketListen())
+				ip = (*it).getIpAddress();
+				port = (*it).getPort();
+
+				if (-1 != checkIpAddressAndPort(ip, port, it))
+				{
+					socketListen = createSocketListen(ip, port);
+					if (-1 == socketListen)
+						return (-1);
+					listenSocket.push_back(socketListen);
+				}
+			}
+			return (0);
+		}
+
+		int			checkIpAddressAndPort(const std::string& ip, const int& port, 
+				std::vector<Server>::iterator it_end)
+		{
+			std::vector<Server>::iterator	it;
+
+			for (it = server.begin(); it != it_end; ++it)
+			{
+				if ((*it).getIpAddress() == ip and (*it).getPort() == port)
 					return (-1);
 			}
-			return (1);
+			return (0);
+		}
+
+		int			createSocketListen(const std::string& ip, const int& port)
+		{
+			int	socketListen;
+
+			//создание сокета ___________________________________________________
+			socketListen = socket(AF_INET, SOCK_STREAM, 0);
+			if (socketListen == -1)
+			{
+				print_error("socket");
+				return (-1);
+			}
+
+			//перевод сокета в неблокирующий режим____________________________
+			int	flags = fcntl(socketListen, F_GETFL);
+			if (-1 == fcntl(socketListen, F_SETFL, flags | O_NONBLOCK))
+			{
+				print_error("fcntl");
+				return (-1);
+			}
+
+			//установили флаг, для предотвращения залипаниz TCP порта__________
+			int	opt = 1;
+			if (-1 == setsockopt(socketListen, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
+			{
+				print_error("setsockopt");
+				return (-1);
+			}
+
+			//сопостовление созданному сокету конкретного адреса________________
+			struct sockaddr_in  addr;
+
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(port);
+			addr.sin_addr.s_addr = inet_addr(ip.c_str());
+			if (-1 == bind(socketListen, (struct sockaddr*) &addr, sizeof(addr)))
+			{
+				print_error("bind");
+				return (-1);
+			}
+
+			//переводим сокет в слушаюший режим_________________________________
+			if (-1 == listen(socketListen, 5))
+			{
+				print_error("listen");
+				return (-1);
+			}
+
+			//печать на консоль информацию______________________________________
+			std::cout << PINK << "________START SERVER_:" << socketListen << " ";
+			std::cout << ip << ":" << port << "    " << NO_C << '\n';
+
+			return (socketListen);
 		}
 
 		int			start(void)
@@ -91,7 +180,7 @@ class	Webserver
 		
 		void	createFdSet(int &max_d, fd_set &readfds, fd_set &writefds)
 		{
-			std::vector<Server>::iterator	it_server;
+			std::vector<int>::iterator		it_ls;
 			std::vector<Client>::iterator	it_client;
 
 			FD_ZERO(&readfds); //очищаем множество
@@ -99,10 +188,10 @@ class	Webserver
 			max_d = 0;
 
 			//добавляем дескриптор в множество
-			for (it_server = server.begin(); it_server != server.end(); ++it_server)
+			for (it_ls = listenSocket.begin(); it_ls != listenSocket.end(); ++it_ls)
 			{
-				FD_SET((*it_server).getSocketListen(), &readfds);
-				max_d = std::max((*it_server).getSocketListen(), max_d);
+				FD_SET((*it_ls), &readfds);
+				max_d = std::max((*it_ls), max_d);
 			}
 
 			for (it_client = client.begin(); it_client != client.end(); ++it_client)
@@ -114,15 +203,15 @@ class	Webserver
 
 		void	addNewClient(fd_set &readfds)
 		{
-			std::vector<Server>::iterator	it_server;
+			std::vector<int>::iterator		it_ls;
 			int								socket_listen;
 			int								socket_client;
 			struct sockaddr_in				addr_cl;
 			socklen_t						addr_len;
 
-			for (it_server = server.begin(); it_server != server.end(); ++it_server)
+			for (it_ls = listenSocket.begin(); it_ls != listenSocket.end(); ++it_ls)
 			{
-				socket_listen = (*it_server).getSocketListen();
+				socket_listen = (*it_ls);
 				if (FD_ISSET(socket_listen, &readfds))
 				{
 					//получаем сокет через который будет осуществлятся связь с клиентом
@@ -134,7 +223,7 @@ class	Webserver
 					{
 						fcntl(socket_client, F_SETFL, O_NONBLOCK);
 						print_connect_info(socket_listen, socket_client, addr_cl);
-						client.push_back(Client(socket_client));
+						client.push_back(Client(socket_client, server));
 					}
 				}
 			}
@@ -150,17 +239,56 @@ class	Webserver
 				socket_client = (*it_client).getSocket();
 
 				if (FD_ISSET(socket_client, &readfds))
-					(*it_client).readSocket();
+					readSocket(*it_client);
 				if (FD_ISSET(socket_client, &writefds))
 					;
 					//read_cl_socket(*it_client);
 			}
 		}
 
+		void	readSocket(Client& client)
+		{
+			std::string		str;
+
+			//читаем данные с клиентского сокета в buf____________________________
+			client.readByte = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
+
+			client.debagPrintReadByte();
+
+			if (client.readByte > 0)
+			{
+				client.buf[client.readByte] = '\0';
+				std::cout << client.buf << std::endl;
+				client.request.append(client.buf);
+
+				//request += std::string(buf);
+				//std::cout << request << std::endl;
+				//проверяем получили ли все данные_______________________________
+				//создаем ответ и отплавляем_____________________________________
+				create_response(client);
+			}
+
+			/*
+			if (client.readByte < 0)
+			{
+				std::cout << "close fd read" << std::endl;
+				shutdown(client.getSocket(), 0);
+			}
+			//debag_pring_request(cl_socket.fd, cl_socket.request);
+			*/
+		}
+
+		void	create_response(Client& client)
+		{
+			client.jsn_request = client.return_map_request(client.request);
+
+		}
+
 
 	public:
 		std::vector<Server>		server;
 		std::vector<Client>		client;
+		std::vector<int>		listenSocket;
 };
 
 /*
