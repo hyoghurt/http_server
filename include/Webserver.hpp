@@ -63,7 +63,7 @@ class	Webserver
 
 				if (-1 != checkIpAddressAndPort(ip, port, it))
 				{
-					socketListen = createSocketListen(ip, port);
+					socketListen = SocketListen(ip, port);
 					if (-1 == socketListen)
 						return (-1);
 					listenSocket.push_back(socketListen);
@@ -85,7 +85,7 @@ class	Webserver
 			return (0);
 		}
 
-		int			createSocketListen(const std::string& ip, const std::string& port)
+		int			SocketListen(const std::string& ip, const std::string& port)
 		{
 			int	socketListen;
 
@@ -552,7 +552,6 @@ class	Webserver
 			return (-1);
 		}
 		*/
-
 
 	public:
 		std::vector<Server>		server;
