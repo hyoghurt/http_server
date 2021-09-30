@@ -1,0 +1,314 @@
+#ifndef CLIENT_HPP
+# define CLIENT_HPP
+
+# define BUF_SIZE 1024
+
+# include <iostream>
+# include <map>
+# include <vector>
+# include <fstream> //open, ifstream
+# include "Server.hpp"
+# include <cstdlib> //itoa
+# include <stdlib.h>
+# include <stdio.h>
+
+class	Client
+{
+	public:
+		/*
+		Client(Server& server) : server(server)
+		{
+			socket = 0;
+			time(&timeStart);
+			request = "";
+			response = "";
+		}
+		*/
+
+		Client(const int& socket) : socket(socket)
+		{
+			time(&timeStart);
+			request = "";
+			response = "";
+		}
+
+		/*
+		Client(const Client& oth) : server(oth.server)
+		{ *this = oth; }
+		*/
+
+		~Client()					{ }
+
+		/*
+		Client&	operator= (const Client& oth)
+		{
+			this->socket = oth.socket;
+			this->timeStart = oth.timeStart;
+			return *this;
+		}
+		*/
+
+		int		getSocket(void) const
+		{ return this->socket; }
+
+		time_t	getTimeStart(void) const
+		{ return this->timeStart; }
+
+		std::string	getRequest(void) const
+		{ return this->request; }
+
+		std::string getResponse(void) const
+		{ return this->response; }
+
+		void	setSocket(const int &socket)
+		{ this->socket = socket; }
+
+		void	setTimeStart(void)
+		{ ctime(&timeStart); }
+
+		void	setRequest(const std::string &request)
+		{ this->request = request; }
+
+		void	setResponse(const std::string &response)
+		{ this->response = response; }
+
+		void	debagPrintReadByte(void)
+		{
+			std::cout << YELLOW << get_new_time() << " socketClient:" << socket;
+			std::cout << " get_byte:" << readByte << RESET << '\n';
+		}
+
+		void	readSocket(void)
+		{
+			//читаем данные с клиентского сокета в buf____________________________
+			readByte = recv(socket, buf, BUF_SIZE - 1, 0);
+
+			debagPrintReadByte();
+
+			if (readByte > 0)
+			{
+				buf[readByte] = '\0';
+				std::cout << buf << std::endl;
+
+				request = buf;
+				create_response();
+			}
+
+			/*
+			if (readByte == 0)
+			{
+				std::cout << "close fd read" << std::endl;
+				shutdown(socket, 0);
+			}
+			*/
+			//debag_pring_request(cl_socket.fd, cl_socket.request);
+		}
+
+		void	debag_show_json_request(void)
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			for (it = json_request.begin(); it != json_request.end(); ++it)
+			{
+				std::cout << "[" << (*it).first << "] = [";
+				std::cout << (*it).second << "]" << std::endl;
+			}
+		}
+
+		void	create_response(void)
+		{
+			std::cout << RED << "create_response" << NO_C << std::endl;
+			create_json_request(request);
+
+			//debag_show_json_request();
+
+			check_malformed();
+
+			response = header + body;
+
+			std::cout << response << std::endl;
+			//send
+		}
+
+		//проверка синтаксиса_______________________________________________
+		void	check_malformed(void)
+		{
+			std::cout << RED << "check_malformed" << NO_C << std::endl;
+			std::string		method;
+			std::string		request_target;
+			std::string		http_version;
+
+			method = json_request["method"];
+			request_target = json_request["request_target"];
+			http_version = json_request["http_version"];
+
+			if (method.length() != 0 && request_target.length() != 0 && http_version.length() != 0)
+				check_method();
+			else
+				header = "400 Bad Request\r\n\r\n";
+		}
+
+		//проверка метода_______________________________________________________
+		void	check_method(void)
+		{
+			std::cout << RED << "check_method" << NO_C << std::endl;
+			if (json_request["method"] == "GET")
+				procesing_get();
+			/*
+			if (json_request["method"] == "POST")
+				procesing_post();
+			if (json_request["method"] == "DELETE")
+				procesing_delete();
+			*/
+			else
+				header = "501 Not Implemented\r\n\r\n";
+		}
+
+		void	procesing_get(void)
+		{
+			std::cout << RED << "procesing_get" << NO_C << std::endl;
+			std::ifstream	file;
+			std::string		path_file;
+			std::string		line;
+			std::streampos	size;
+			char*			memblock;
+
+			path_file = json_request["request_target"];
+			if (path_file == "/")
+				path_file = "www/index.nginx.html";
+
+			file.open (path_file, std::ios::in | std::ios::binary);
+
+			if (file.is_open())
+			{
+				while (getline(file, line))
+				{
+					body += line;
+					body += "\n";
+				}
+				file.close();
+
+				char	byt[33];
+
+				/*
+				itoa (3, byt, 10);
+				std::cout << byt << std::endl;
+				*/
+
+				create_header_200();
+				/*
+				std::cout << RED << "is_open" << NO_C << std::endl;
+				size = file.tellg();
+
+				std::cout << "size= " << size << std::endl;
+				memblock = new char [size];
+
+				file.seekg (0, std::ios::beg);
+				file.read (memblock, size);
+
+				body = std::string(memblock, size);
+				std::cout << "debeg body\n\n\n";
+				std::cout << memblock << std::endl;
+
+				delete [] memblock;
+				*/
+			}
+			else
+				header = "404 Not Found\r\n\r\n";
+		}
+
+		void	create_header_200(void)
+		{
+			header = "HTTP/1.1 200 OK\r\n";
+			header += "Host: ";
+			header += server.getIpAddress();
+			header += ":";
+			header += server.getPort();
+			header += "\r\n";
+			header += "Content-Type: text/html; charset=UTF-8\r\n";
+			header += "Connection: close\r\n";
+			header += "Content-Length: ";
+			header += body.length();
+			header += "\r\n\r\n";
+		}
+
+		int		check_method(const std::string& m)
+		{
+			std::vector<std::string>			method(3);
+			std::vector<std::string>::iterator	it;
+
+			method.push_back("GET");
+			method.push_back("POST");
+			method.push_back("DELETE");
+
+			for (it = method.begin(); it != method.end(); ++it)
+			{
+				if (*it == m)
+					return (1);
+			}
+			return (-1);
+		}
+
+		void	create_json_request(const std::string& request)
+		{
+			std::cout << RED << "create_json_request" << NO_C << std::endl;
+			size_t								pos;
+			size_t								pos_n;
+			size_t								start(0);
+			size_t								start_n(0);
+			std::string							tmp;
+			std::map<std::string, std::string>	jsn;
+			std::string							key;
+			std::string							value;
+
+			pos_n = request.find(" ", start_n);
+			jsn["method"] = request.substr(start_n, pos_n - start_n);
+
+			start_n = pos_n + 1;
+			pos_n = request.find(" ", start_n);
+			jsn["request_target"] = request.substr(start_n, pos_n - start_n);
+
+			start_n = pos_n + 1;
+			pos_n = request.find("\r", start_n);
+			jsn["http_version"] = request.substr(start_n, pos_n - start_n);
+
+			start_n = pos_n + 2;
+			pos_n = request.find("\n", start_n);
+
+			while (pos_n != std::string::npos)
+			{
+				tmp = request.substr(start_n, pos_n - start_n - 1);
+
+				if (tmp.length() == 0)
+					break;
+
+				start = 0;
+				pos = tmp.find(":", start);
+				key = tmp.substr(start, pos - start);
+
+				start = pos + 2;
+				value = tmp.substr(start);
+				jsn[key] = value;
+
+				start_n = pos_n + 1;
+				pos_n = request.find("\n", start_n);
+			}
+
+			json_request = jsn;
+		}
+
+
+	public:
+		int									socket;
+		time_t								timeStart;
+		std::string							request;
+		std::string							response;
+		std::string							header;
+		std::string							body;
+		char								buf[BUF_SIZE];
+		int									readByte;
+		std::map<std::string, std::string>	json_request;
+		size_t								byte_send;
+};
+
+#endif

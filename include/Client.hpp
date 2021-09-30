@@ -8,6 +8,7 @@
 class	Client
 {
 	public:
+		/*
 		Client()
 		{
 			socket = 0;
@@ -15,6 +16,7 @@ class	Client
 			request = "";
 			response = "";
 		}
+		*/
 
 		Client(const int& socket) : socket(socket)
 		{
@@ -23,16 +25,20 @@ class	Client
 			response = "";
 		}
 
+		/*
 		Client(const Client& oth)	{ *this = oth; }
+		*/
 
 		~Client()					{ }
 
+		/*
 		Client&	operator= (const Client& oth)
 		{
 			this->socket = oth.socket;
 			this->timeStart = oth.timeStart;
 			return *this;
 		}
+		*/
 
 		int		getSocket(void) const
 		{ return this->socket; }
@@ -171,6 +177,7 @@ class	Client
 				//return (response_step_1(jsn));
 			}
 			
+			*/
 			std::map<std::string, std::string>	return_map_request(const std::string &request)
 			{
 				size_t								pos;
@@ -181,13 +188,13 @@ class	Client
 				std::map<std::string, std::string>	jsn;
 				std::string							key;
 				std::string							value;
-			
+
 				pos_n = request.find(" ", start_n);
 				jsn["method"] = request.substr(start_n, pos_n - start_n);
-			
+
 				start_n = pos_n + 1;
 				pos_n = request.find(" ", start_n);
-				jsn["path"] = request.substr(start_n, pos_n - start_n);
+				jsn["request_target"] = request.substr(start_n, pos_n - start_n);
 			
 				start_n = pos_n + 1;
 				pos_n = request.find("\r", start_n);
@@ -217,16 +224,22 @@ class	Client
 			
 				return (jsn);
 			}
-			*/
 
 
-	private:
-		int			socket;
-		time_t		timeStart;
-		std::string	request;
-		std::string	response;
-		char		buf[BUF_SIZE];
-		int			readByte;
+	public:
+		int									socket;
+		time_t								timeStart;
+		std::string							request;
+		std::string							response;
+		std::string							header;
+		std::string							body;
+		char								buf[BUF_SIZE];
+		int									readByte;
+		std::map<std::string, std::string>	json_request;
+		size_t								byte_send;
+		Server*								server;
+		Location*							location;
+		std::string							path_file;
 };
 
 #endif
