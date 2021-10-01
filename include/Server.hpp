@@ -45,7 +45,7 @@ class	Server
 
 		Server(const std::string& ipAddress, const std::string& port,
 				const std::string& serverName,
-				const std::map<std::string, std::string> errorPage,
+				const std::map<int, std::string> errorPage,
 				const std::map<std::string, Location> location)
 		{
 			this->ipAddress = ipAddress;
@@ -59,7 +59,7 @@ class	Server
 		std::string							ipAddress;
 		std::string							port;
 		std::string							serverName;
-		std::map<std::string, std::string>	errorPage;
+		std::map<int, std::string>			errorPage;
 		std::map<std::string, Location>		location;
 };
 

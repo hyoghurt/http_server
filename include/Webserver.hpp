@@ -22,7 +22,15 @@
 class	Webserver
 {
 	public:
-		Webserver() {}
+		Webserver()
+		{
+			statusCode[200] = "HTTP/1.1 200 OK\r\n";
+			statusCode[400] = "HTTP/1.1 400 Bad Request\r\n";
+			statusCode[404] = "HTTP/1.1 404 Not Found\r\n";
+			statusCode[405] = "HTTP/1.1 405 Method Not Allowed\r\n";
+			statusCode[500] = "HTTP/1.1 500 Internal Server Error\r\n";
+			statusCode[501] = "HTTP/1.1 501 Not Implemented\r\n";
+		}
 		Webserver(const Webserver& oth) { *this = oth; }
 		~Webserver()
 		{
@@ -40,6 +48,7 @@ class	Webserver
 			this->server = oth.server;
 			this->client = oth.client;
 			this->listenSocket = oth.listenSocket;
+			this->statusCode = oth.statusCode;
 			return *this;
 		}
 
@@ -175,6 +184,8 @@ class	Webserver
 		
 		void	createFdSet(int &max_d, fd_set &readfds, fd_set &writefds)
 		{
+			std::cout << BLUE << "create fd set" << RESET << std::endl;
+
 			std::vector<int>::iterator		it_ls;
 			std::vector<Client>::iterator	it_client;
 
@@ -198,6 +209,8 @@ class	Webserver
 
 		void	addNewClient(fd_set &readfds)
 		{
+			std::cout << BLUE << "add new client" << RESET << std::endl;
+
 			std::vector<int>::iterator		it_ls;
 			int								socket_listen;
 			int								socket_client;
@@ -224,133 +237,212 @@ class	Webserver
 			}
 		}
 
+		int		checkCloseClient(Client& client)
+		{
+			if (client.responseHeader["Connection"] == "Connection: close\r\n")
+				return (1);
+
+			time_t		get_time;
+
+			time(&get_time);
+
+			if (get_time - client.timeStart > 4)
+				return (1);
+
+			return (0);
+		}
+
 		void	processingClient(fd_set &readfds, fd_set &writefds)
 		{
+			std::cout << BLUE << "processing client" << RESET << std::endl;
 			std::vector<Client>::iterator	it_client;
 			int								socket_client;
 
-			for (it_client = client.begin(); it_client != client.end(); ++it_client)
+			it_client = client.begin();
+
+			while (it_client != client.end())
 			{
 				socket_client = (*it_client).getSocket();
 
 				if (FD_ISSET(socket_client, &readfds))
 					readSocket(*it_client);
-				if (FD_ISSET(socket_client, &writefds))
-					;
-					//read_cl_socket(*it_client);
+
+				else if (FD_ISSET(socket_client, &writefds))
+					writeSocket(*it_client);
+
+				if (checkCloseClient(*it_client))
+				{
+					debagPrintColorClient(YELLOW, socket_client);
+					std::cout << YELLOW <<  " close socket" << RESET << '\n';
+
+					close(socket_client);
+					it_client = client.erase(it_client);
+
+					continue;
+				}
+
+				++it_client;
 			}
 		}
 
 		void	readSocket(Client& client)
 		{
+			std::cout << BLUE << "read socket" << RESET << std::endl;
+
 			std::string		str;
 
 			//читаем данные с клиентского сокета в buf____________________________
 			client.readByte = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
 
-			client.debagPrintReadByte();
+			debagPrintColorClient(YELLOW, client.socket);
+			std::cout << YELLOW << " get bytes:" << client.readByte << RESET << '\n';
 
 			if (client.readByte > 0)
 			{
+				client.setTimeStart();
+
 				client.buf[client.readByte] = '\0';
 				client.request.append(client.buf);
 
 				std::cout << client.request << std::endl;
 
 				//проверяем получили ли все данные_______________________________
-				//создаем ответ и отплавляем_____________________________________
 				create_response(client);
+				//shutdown(client.socket, 0);
 			}
-
-			/*
-			if (client.readByte < 0)
-			{
-				std::cout << "close fd read" << std::endl;
-				shutdown(client.getSocket(), 0);
-			}
-			//debag_pring_request(cl_socket.fd, cl_socket.request);
-			*/
 		}
 
-		void	debagPrintMessage(const std::string& mes)
-		{ std::cout << YELLOW << get_new_time() << " " << mes << RESET << '\n'; }
+		void	writeSocket(Client& client)
+		{
+			std::cout << BLUE << "write socket" << RESET << std::endl;
+			int	n;
+
+			n = send(client.socket, client.buf_write + client.total_bytes_write, client.bytes_write, 0);
+			if (-1 == n)
+				std::cout << RED << "Error send" << RESET << '\n';
+			else
+			{
+				client.total_bytes_write += n;
+				client.bytes_write -= n;
+
+				debagPrintColorClient(YELLOW, client.socket);
+				std::cout << YELLOW << " write bytes:" << n << " ost bytes write:" << client.bytes_write << RESET << std::endl;
+
+				if (client.bytes_write == 0)
+					shutdown(client.socket, 1);
+			}
+		}
+
 
 		void	create_response(Client& client)
 		{
+			std::cout << BLUE << "create response"<< RESET << std::endl;
 			int		status_code;
-			char	buf[33];
 
 			client.json_request = client.return_map_request(client.request);
 
+			add_response_header(client);
+
 			status_code = check_server_location(client);
+
+			client.responseHeader["Status"] = statusCode[status_code];
 
 			if (200 != status_code)
 			{
-				if (400 == status_code)
+				if (NULL != client.server)
 				{
-					client.header = "400 Bad Request\r\n";
-					if (NULL != client.server)
-					{
-						std::string		path_file;
+					std::string		path_file;
 
-						path_file = client.server->errorPage["400"];
-						if (!path_file.empty())
-						{
-							client.body = open_file(path_file);
-							client.header += "Content-Length: ";
-							client.header += std::to_string(client.body.size());
-							client.header += "\r\n";
-						}
-					}
-					client.header += "\r\n";
-
-					client.response = client.header + client.body;
+					path_file = client.server->errorPage[status_code];
+					if (!path_file.empty())
+						open_file(path_file, client);
 				}
 			}
-			else
-			{
-				client.response = client.header + client.body;
-			}
 
-			std::cout << client.response << std::endl;
-			exit (0);
+			create_response_header(client);
+
+			client.response = client.header + client.body;
+
+			client.total_bytes_write = 0;
+			client.bytes_write = client.response.size();
+
+			client.buf_write = new char [client.bytes_write];
+			strncpy(client.buf_write, client.response.c_str(), client.bytes_write);
+
+			writeSocket(client);
 		}
 
 		//старт сздания ответа_______________________________________________________
 		int		check_server_location(Client& client)
 		{
-			std::cout << RED << "check_method" << NO_C << std::endl;
+			std::cout << BLUE << "check server location" << RESET << std::endl;
 
 			client.server = find_server(client);
 			if (client.server == 0)
 				return (400);
-				//client.header = "400 Bad Request\r\n\r\n";
 
 			client.location = find_location(client);
 			if (client.location == 0)
 				return (400);
-				//client.header = "400 Bad Request\r\n\r\n";
 
-			debagPrintMessage(client.path_file);
+			if (check_501(client))
+				return (501);
 
-			std::string		tmp;
-
-			tmp = open_file(client.path_file);
-			std::cout << tmp << std::endl;
-
-			exit(0);
+			if (check_405(client))
+				return (405);
 
 			if (client.json_request["method"] == "GET")
-				procesing_get(client);
-			else
-				client.header = "501 Not Implemented\r\n\r\n";
+				return (open_file(client.path_file, client));
+
 			return (200);
 		}
 
+		int		check_501(Client& client)
+		{
+			std::string	method;
+
+			method = client.json_request["method"];
+
+			if (method != "GET" && method != "POST" && method != "DELETE")
+				return (1);
+			return (0);
+		}
+
+		int		check_405(Client& client)
+		{
+			std::vector<std::string>::iterator	it;
+			std::string	method;
+
+			it = client.location->accessMethods.begin();
+
+			method = client.json_request["method"];
+
+			while (it != client.location->accessMethods.end())
+			{
+				if (*it == method)
+					return (0);
+				++it;
+			}
+			return (1);
+		}
+
+		/*
+		void	procesing_get(Client& client)
+		{
+			std::cout << BLUE << "procesing get" << NO_C << std::endl;
+
+			std::ifstream	file;
+			std::string		path_file;
+			std::string		line;
+			std::streampos	size;
+			char*			memblock;
+
+		}
+		*/
 
 		Server*		find_server(Client& client)
 		{
-			std::cout << RED << "find server" << NO_C << std::endl;
+			std::cout << BLUE << "find server" << RESET << std::endl;
 
 			std::vector<Server>::iterator	it;
 			std::string						host;
@@ -379,7 +471,7 @@ class	Webserver
 
 		Location*	find_location(Client &client)
 		{
-			std::cout << RED << "find location" << NO_C << std::endl;
+			std::cout << BLUE << "find location" << RESET << std::endl;
 
 			std::map<std::string, Location>::iterator	it;
 			std::string									request_target;
@@ -406,7 +498,7 @@ class	Webserver
 
 		Location*	create_path_file_client(const std::string& target, std::map<std::string, Location>::iterator it, Client& client)
 		{
-			std::cout << RED << "create path file client" << NO_C << std::endl;
+			std::cout << BLUE << "create path file client" << RESET << std::endl;
 
 			if (target == client.json_request["request_target"])
 			{
@@ -422,15 +514,49 @@ class	Webserver
 			return (&(*it).second);
 		}
 
-		std::string		open_file(const std::string& str)
+		void	add_response_header(Client& client)
 		{
-			std::cout << RED << "open file: " << str << NO_C << std::endl;
+			if (client.json_request["Connection"].empty())
+				client.responseHeader["Connection"] = "Connection: close\r\n";
+			else if (client.json_request["Connection"] == "close")
+				client.responseHeader["Connection"] = "Connection: close\r\n";
+			else
+				client.responseHeader["Connection"] = "Connection: keep-alive\r\n";
 
-			std::string		body;
+			client.responseHeader["Host"] = "Host: " + client.json_request["Host"] + "\r\n";
+		}
+
+		void	create_response_header(Client& client)
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			client.header = client.responseHeader["Status"];
+			client.header += client.responseHeader["Host"];
+
+			for (it = client.responseHeader.begin(); it != client.responseHeader.end(); ++it)
+			{
+				if ((*it).first == "Status")
+					continue;
+				if ((*it).first == "Host")
+					continue;
+				if (!(*it).second.empty())
+					client.header += (*it).second;
+			}
+			client.header += "\r\n";
+		}
+
+		int		open_file(const std::string& str, Client& client)
+		{
+			std::cout << BLUE << "open file: " << str << RESET << std::endl;
+
 			int				length;
 			char*			buffer;
+			int				status_code;
+
+			status_code = 200;
 
 			std::ifstream	is (str, std::ifstream::binary);
+
 			if (is)
 			{
 				// get length of file:
@@ -440,123 +566,53 @@ class	Webserver
 
 				buffer = new char [length];
 
-				std::cout << YELLOW << get_new_time() << " ";
-				std::cout << "Reading " << length << " characters... ";
-				std::cout << RESET << '\n';
+				debagPrintColorClient(YELLOW, client.socket);
+				std::cout << YELLOW << " Reading " << length << " characters..." << RESET << '\n';
 
 				// read data as a block:
 				is.read (buffer,length);
 
-
 				if (is)
 				{
-					body.assign(buffer, length);
-					debagPrintMessage("all characters read successfully");
+					client.body.assign(buffer, length);
+					debagPrintColorClient(YELLOW, client.socket);
+					std::cout << YELLOW << " all characters read successfully" << RESET << '\n';
+
+					if (!client.body.empty())
+					{
+						client.responseHeader["Content-Length"] =
+							"Content-Length: " +
+							std::to_string(client.body.size()) + 
+							"\r\n";
+					}
 				}
 				else
 				{
-					std::cout << RED << get_new_time() << " ";
-					std::cout << "Error: only " << is.gcount() << " could be read";
-					std::cout << RESET << '\n';
+					debagPrintColorClient(RED, client.socket);
+					std::cout << RED << "Error: only " << is.gcount() << " could be read" << RESET << '\n';
+					status_code = 500;
 				}
 
 				is.close();
-			    // ...buffer contains the entire file...
 				delete [] buffer;
 			}
-			return (body);
-		}
-
-
-		void	procesing_get(Client& client)
-		{
-			std::cout << RED << "procesing_get" << NO_C << std::endl;
-			std::ifstream	file;
-			std::string		path_file;
-			std::string		line;
-			std::streampos	size;
-			char*			memblock;
-
-		}
-			/*
-			path_file = client.json_request["request_target"];
-			if (path_file == "/")
-				path_file = "www/index.nginx.html";
-
-			file.open (path_file, std::ios::in | std::ios::binary);
-
-			if (file.is_open())
-			{
-				while (getline(file, line))
-				{
-					body += line;
-					body += "\n";
-				}
-				file.close();
-
-				char	byt[33];
-
-				itoa (3, byt, 10);
-				std::cout << byt << std::endl;
-
-				create_header_200();
-				std::cout << RED << "is_open" << NO_C << std::endl;
-				size = file.tellg();
-
-				std::cout << "size= " << size << std::endl;
-				memblock = new char [size];
-
-				file.seekg (0, std::ios::beg);
-				file.read (memblock, size);
-
-				body = std::string(memblock, size);
-				std::cout << "debeg body\n\n\n";
-				std::cout << memblock << std::endl;
-
-				delete [] memblock;
-			}
 			else
-				header = "404 Not Found\r\n\r\n";
-		}
-		*/
-		/*
-		void	create_header_200(void)
-		{
-			header = "HTTP/1.1 200 OK\r\n";
-			header += "Host: ";
-			header += server.getIpAddress();
-			header += ":";
-			header += server.getPort();
-			header += "\r\n";
-			header += "Content-Type: text/html; charset=UTF-8\r\n";
-			header += "Connection: close\r\n";
-			header += "Content-Length: ";
-			header += body.length();
-			header += "\r\n\r\n";
+				status_code = 404;
+			return (status_code);
 		}
 
-		int		check_method(const std::string& m)
-		{
-			std::vector<std::string>			method(3);
-			std::vector<std::string>::iterator	it;
 
-			method.push_back("GET");
-			method.push_back("POST");
-			method.push_back("DELETE");
+		void	debagPrintMessage(const std::string& mes)
+		{ std::cout << YELLOW << get_new_time() << " " << mes << RESET << '\n'; }
 
-			for (it = method.begin(); it != method.end(); ++it)
-			{
-				if (*it == m)
-					return (1);
-			}
-			return (-1);
-		}
-		*/
+		void	debagPrintColorClient(const std::string& col, const int& socket)
+		{ std::cout << col << get_new_time() << " " << "cl:" << socket << RESET; }
 
 	public:
-		std::vector<Server>		server;
-		std::vector<Client>		client;
-		std::vector<int>		listenSocket;
+		std::vector<Server>			server;
+		std::vector<Client>			client;
+		std::vector<int>			listenSocket;
+		std::map<int, std::string>	statusCode;
 };
 
 /*
