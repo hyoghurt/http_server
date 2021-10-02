@@ -3,6 +3,8 @@
 
 # define BUF_SIZE 1024
 
+# define TIME_KEEP_ALIVE 5
+
 //#include <sys/time.h>
 //#include <cstring>
 //#include <unistd.h>
@@ -18,6 +20,7 @@
 # include "Server.hpp"
 # include "Client.hpp"
 # include <stdlib.h> //atoi
+# include <dirent.h>
 
 class	Webserver
 {
@@ -246,7 +249,7 @@ class	Webserver
 
 			time(&get_time);
 
-			if (get_time - client.timeStart > 4)
+			if (get_time - client.timeStart > TIME_KEEP_ALIVE)
 				return (1);
 
 			return (0);
@@ -372,6 +375,90 @@ class	Webserver
 			writeSocket(client);
 		}
 
+		int				autoindex(Client& client)
+		{
+			if (client.path_file[0] == '/')
+				client.path_file = "." + client.path_file;
+			else if (client.path_file[0] != '.' || client.path_file[1] != '/')
+				client.path_file = "./" + client.path_file;
+
+			return (autoindex_open_directory(client.path_file, client));
+		}
+
+		int				autoindex_open_directory(std::string dir, Client& client)
+		{
+			DIR									*dp;
+			struct dirent						*ep;
+			std::vector<std::string>			name_file;
+			std::vector<std::string>::iterator	it;
+
+			dp = opendir(dir.c_str());
+			if (NULL != dp)
+			{
+				while (NULL != (ep = readdir(dp)))
+					name_file.push_back(ep->d_name);
+				closedir(dp);
+
+				it = name_file.begin() + 2;
+				for (; it != name_file.end(); ++it)
+				{
+					if (autoindex_check_directory(dir + *it))
+						*it = *it + "/";
+
+					if (*it == "index.html")
+					{
+						client.path_file = dir + "/index.html";
+						return (open_file(client.path_file, client));
+					}
+				}
+
+				client.body = autoindex_create_body(client.json_request["request_target"], name_file);
+				return (200);
+			}
+
+			return (open_file(client.path_file, client));
+		}
+
+		int				autoindex_check_directory(const std::string& it_dir)
+		{
+			std::cout << BLUE << "check directory"<< RESET << std::endl;
+			DIR					*dp;
+
+			dp = opendir((it_dir).c_str());
+			if (NULL != dp)
+			{
+				closedir(dp);
+				return (1);
+			}
+			return (0);
+		}
+
+		std::string		autoindex_create_body(const std::string& dir, std::vector<std::string>& name_file)
+		{
+			std::vector<std::string>::iterator	it;
+			std::string							body;
+
+			body = "<html><head>\r\n";
+			body += "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">\r\n";
+			body += "<title>Directory listing for " + dir + "</title>\r\n";
+			body += "</head>\r\n";
+			body += "<body>\r\n";
+			body += "<h1>Directory listing for " + dir + "</h1>\r\n";
+			body += "<hr>\r\n";
+			body += "<ul>\r\n";
+		
+			it = name_file.begin() + 2;
+			for (; it != name_file.end(); ++it)
+				body += "<li><a href=\"" + *it + "\">" + *it + "</a></li>\r\n";
+		
+			body += "</ul>\r\n";
+			body += "<hr>\r\n";
+			body += "</body></html>\r\n";
+
+			return (body);
+		}
+
+
 		//старт сздания ответа_______________________________________________________
 		int		check_server_location(Client& client)
 		{
@@ -384,6 +471,9 @@ class	Webserver
 			client.location = find_location(client);
 			if (client.location == 0)
 				return (400);
+
+			if (client.location->autoindex)
+				return (autoindex(client));
 
 			if (check_501(client))
 				return (501);
@@ -404,7 +494,10 @@ class	Webserver
 			method = client.json_request["method"];
 
 			if (method != "GET" && method != "POST" && method != "DELETE")
+			{
+				client.responseHeader["Allow"] = "Allow: GET, POST, DELETE\r\n";
 				return (1);
+			}
 			return (0);
 		}
 
@@ -425,20 +518,6 @@ class	Webserver
 			}
 			return (1);
 		}
-
-		/*
-		void	procesing_get(Client& client)
-		{
-			std::cout << BLUE << "procesing get" << NO_C << std::endl;
-
-			std::ifstream	file;
-			std::string		path_file;
-			std::string		line;
-			std::streampos	size;
-			char*			memblock;
-
-		}
-		*/
 
 		Server*		find_server(Client& client)
 		{
@@ -516,12 +595,13 @@ class	Webserver
 
 		void	add_response_header(Client& client)
 		{
-			if (client.json_request["Connection"].empty())
-				client.responseHeader["Connection"] = "Connection: close\r\n";
-			else if (client.json_request["Connection"] == "close")
+			if (client.json_request["Connection"] == "close")
 				client.responseHeader["Connection"] = "Connection: close\r\n";
 			else
-				client.responseHeader["Connection"] = "Connection: keep-alive\r\n";
+			{
+				client.responseHeader["Connection"] = "Connection: Keep-Alive\r\n";
+				client.responseHeader["Keep-Alive"] = "Keep-Alive: timeout=" + std::to_string(TIME_KEEP_ALIVE) + "\r\n";
+			}
 
 			client.responseHeader["Host"] = "Host: " + client.json_request["Host"] + "\r\n";
 		}
@@ -529,6 +609,14 @@ class	Webserver
 		void	create_response_header(Client& client)
 		{
 			std::map<std::string, std::string>::iterator	it;
+
+			if (!client.body.empty())
+			{
+				client.responseHeader["Content-Length"] =
+					"Content-Length: " +
+					std::to_string(client.body.size()) + 
+					"\r\n";
+			}
 
 			client.header = client.responseHeader["Status"];
 			client.header += client.responseHeader["Host"];
@@ -577,14 +665,6 @@ class	Webserver
 					client.body.assign(buffer, length);
 					debagPrintColorClient(YELLOW, client.socket);
 					std::cout << YELLOW << " all characters read successfully" << RESET << '\n';
-
-					if (!client.body.empty())
-					{
-						client.responseHeader["Content-Length"] =
-							"Content-Length: " +
-							std::to_string(client.body.size()) + 
-							"\r\n";
-					}
 				}
 				else
 				{
@@ -598,6 +678,7 @@ class	Webserver
 			}
 			else
 				status_code = 404;
+
 			return (status_code);
 		}
 

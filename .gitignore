@@ -5,3 +5,5 @@ obj
 webserv
 conspect
 .DS_Store
+docker_nginx
+tester

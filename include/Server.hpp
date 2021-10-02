@@ -26,6 +26,7 @@ class	Server
 			this->ipAddress = oth.ipAddress;
 			this->port = oth.port;
 			this->serverName = oth.serverName;
+			this->clientMaxBodySize = oth.clientMaxBodySize;
 			this->location = oth.location;
 			this->errorPage = oth.errorPage;
 			return *this;
@@ -45,12 +46,14 @@ class	Server
 
 		Server(const std::string& ipAddress, const std::string& port,
 				const std::string& serverName,
+				const std::string& bodySize,
 				const std::map<int, std::string> errorPage,
 				const std::map<std::string, Location> location)
 		{
 			this->ipAddress = ipAddress;
 			this->port = port;
 			this->serverName = serverName;
+			this->clientMaxBodySize = bodySize;
 			this->errorPage = errorPage;
 			this->location = location;
 		}
@@ -59,6 +62,7 @@ class	Server
 		std::string							ipAddress;
 		std::string							port;
 		std::string							serverName;
+		std::string							clientMaxBodySize;
 		std::map<int, std::string>			errorPage;
 		std::map<std::string, Location>		location;
 };
