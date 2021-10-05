@@ -7,3 +7,6 @@ conspect
 .DS_Store
 docker_nginx
 tester
+src/cgi2.cpp
+src/cgi.cpp
+src/a.out

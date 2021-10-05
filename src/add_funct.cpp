@@ -1,9 +1,16 @@
 #include "add_funct.hpp"
 
-void			print_error(const std::string& str)
-{
-    std::cerr << "webserver: " << str << ": " << strerror(errno) << std::endl;
-}
+void	print_debug(const std::string& str)
+{ std::cout << BLUE << str << RESET << '\n'; }
+
+void	print_info(const std::string& str)
+{ std::cout << YELLOW << str << RESET << '\n'; }
+
+void	print_error(const std::string& str)
+{ std::cerr << RED << "webserver: Error: " << str << RESET << '\n'; }
+
+void	print_error_strerror(const std::string& str)
+{ std::cerr << RED << "webserver: Error: " << str << ": " << strerror(errno) << RESET << '\n'; }
 
 void			print_connect_info(int socket_listen, int fd_cl, struct sockaddr_in addr_cl)
 {

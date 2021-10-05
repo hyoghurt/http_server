@@ -23,19 +23,30 @@ int	main(int argc, char **argv)
 	std::map<std::string, Location>		location;
 
 	root = "www";
-	autoindex = true;
-	index = "";
+	autoindex = false;
+	index = "index.html";
 	accessMethods.push_back("GET");
 	accessMethods.push_back("POST");
 
 	Location		loc(root, autoindex, index, accessMethods);
+
+	root = "www/cgi";
+	autoindex = false;
+	index = "index.html";
+	accessMethods.push_back("GET");
+	accessMethods.push_back("POST");
+
+	Location		loc_cgi(root, autoindex, index, accessMethods);
 
 	host = "127.0.0.1";
 	port = "9000";
 	server_name = "test.ru";
 	body_size = "100";
 	error_page[400] = "www/400.html";
+	error_page[404] = "www/404.html";
 	location["/"] = loc;
+	location["/cgi-bin"] = loc_cgi;
+	location["/kapouet"] = loc;
 
 	Server			serv(host, port, server_name, body_size, error_page, location);
 
