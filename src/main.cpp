@@ -23,8 +23,9 @@ int	main(int argc, char **argv)
 	std::map<std::string, Location>		location;
 
 	root = "www";
-	autoindex = false;
+	autoindex = true;
 	index = "index.html";
+	accessMethods.clear();
 	accessMethods.push_back("GET");
 	accessMethods.push_back("POST");
 
@@ -33,10 +34,20 @@ int	main(int argc, char **argv)
 	root = "www/cgi";
 	autoindex = false;
 	index = "index.html";
+	accessMethods.clear();
 	accessMethods.push_back("GET");
 	accessMethods.push_back("POST");
 
 	Location		loc_cgi(root, autoindex, index, accessMethods);
+
+	root = "www/delete";
+	autoindex = true;
+	index = "index.html";
+	accessMethods.clear();
+	accessMethods.push_back("GET");
+	accessMethods.push_back("DELETE");
+
+	Location		loc_delete(root, autoindex, index, accessMethods);
 
 	host = "127.0.0.1";
 	port = "9000";
@@ -47,6 +58,7 @@ int	main(int argc, char **argv)
 	location["/"] = loc;
 	location["/cgi-bin"] = loc_cgi;
 	location["/kapouet"] = loc;
+	location["/delete"] = loc_delete;
 
 	Server			serv(host, port, server_name, body_size, error_page, location);
 

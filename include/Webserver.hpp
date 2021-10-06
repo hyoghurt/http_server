@@ -29,6 +29,7 @@ class	Webserver
 		Webserver()
 		{
 			statusCode[200] = "HTTP/1.1 200 OK\r\n";
+			statusCode[204] = "HTTP/1.1 204 No Content\r\n";
 			statusCode[400] = "HTTP/1.1 400 Bad Request\r\n";
 			statusCode[404] = "HTTP/1.1 404 Not Found\r\n";
 			statusCode[405] = "HTTP/1.1 405 Method Not Allowed\r\n";
@@ -415,6 +416,9 @@ class	Webserver
 
 			if (client.check_405())
 				return (405);
+
+			if (client.json_request["method"] == "DELETE")
+				return (client.deleteFile());
 
 			if (client.json_request["method"] == "GET")
 				return (check_cgi(client));

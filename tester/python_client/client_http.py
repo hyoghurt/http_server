@@ -87,6 +87,5 @@ def client_post(ip, port):
 my_serv = "127.0.0.1"
 port_m = 9000
 
-client_get(my_serv, port_m, "/cgi-bin/hello.php/with/additional/path?and=a&query=string")
-
-#client_delete(my_serv, port_m, "/lol")
+#client_get(my_serv, port_m, "/cgi-bin/hello.php/with/additional/path?and=a&query=string")
+client_delete(my_serv, port_m, "/delete/1.h")

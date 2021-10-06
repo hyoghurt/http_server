@@ -458,6 +458,32 @@ class	Client
 
 		}
 
+		int		deleteFile(void)
+		{
+			print_debug("F delete file");
+
+			std::string	str = path_file;
+
+			std::string path = getenv("PWD");
+			std::cout << "PWD: " << path << std::endl;
+
+			if (path.empty())
+				return 500;
+
+			std::string absolutPath = path + std::string("/") + str;
+			std::cout << absolutPath << std::endl;
+
+			if (unlink(str.c_str()) == 0)
+			{
+				std::cout << "\"" << str << "\" was deleted" << std::endl;
+				return 204;
+			}
+			else
+			{
+				std::cout << "something wrong" << std::endl;
+				return 404;
+			}
+		}
 
 		void	debug_info(const std::string& mes)
 		{ std::cout << YELLOW << get_new_time() << " " << "Cl:" << socket << " " << mes <<  RESET; }
