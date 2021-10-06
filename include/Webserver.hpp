@@ -34,6 +34,9 @@ class	Webserver
 			statusCode[405] = "HTTP/1.1 405 Method Not Allowed\r\n";
 			statusCode[500] = "HTTP/1.1 500 Internal Server Error\r\n";
 			statusCode[501] = "HTTP/1.1 501 Not Implemented\r\n";
+
+			interpreter[".py"] = "/Users/hyoghurt/.brew/bin/python3";
+			interpreter[".php"] = "/usr/bin/php";
 		}
 		Webserver(const Webserver& oth) { *this = oth; }
 		~Webserver()
@@ -372,7 +375,26 @@ class	Webserver
 
 			writeSocket(client);
 
+			std::cout << client.header << std::endl;
+			std::cout << client.body << std::endl;
+
 			//exit(0);
+		}
+
+
+		int		check_cgi(Client& client)
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			for (it = interpreter.begin(); it != interpreter.end(); ++it)
+			{
+				if (client.path_file.find((*it).first) != std::string::npos)
+				{
+					client.interpreter = (*it).second;
+					return (client.run_cgi());
+				}
+			}
+			return (client.autoindex());
 		}
 
 		//старт сздания ответа_______________________________________________________
@@ -395,11 +417,7 @@ class	Webserver
 				return (405);
 
 			if (client.json_request["method"] == "GET")
-			{
-				if (client.path_file.find(".py") != std::string::npos)
-					return (client.run_cgi());
-				return (client.autoindex());
-			}
+				return (check_cgi(client));
 
 			return (500);
 		}
@@ -520,10 +538,11 @@ class	Webserver
 		{ std::cout << col << get_new_time() << " " << "cl:" << socket << RESET; }
 
 	public:
-		std::vector<Server>			server;
-		std::vector<Client>			client;
-		std::vector<int>			listenSocket;
-		std::map<int, std::string>	statusCode;
+		std::vector<Server>					server;
+		std::vector<Client>					client;
+		std::vector<int>					listenSocket;
+		std::map<int, std::string>			statusCode;
+		std::map<std::string, std::string>	interpreter;
 };
 
 /*

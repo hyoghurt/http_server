@@ -321,7 +321,7 @@ class	Client
 			it = name_file.begin() + 2;
 			for (; it != name_file.end(); ++it)
 				body.append("<li><a href=\"" + *it + "\">" + *it + "</a></li>\r\n");
-		
+
 			body.append("</ul>\r\n");
 			body.append("<hr>\r\n");
 			body.append("</body></html>\r\n");
@@ -329,10 +329,14 @@ class	Client
 
 		char**	create_env(void)
 		{
+			print_debug("F create env");
+
 			std::map<std::string, std::string>::iterator	it;
 
 			int		size = envCgi.size();
 			int		i = 0;
+
+			std::cout << "size= " << size << '\n';
 
 			if (size == 0)
 				return (0);
@@ -343,6 +347,11 @@ class	Client
 				env[i++] = strdup(( (*it).first + "=\"" + (*it).second + "\"").c_str());
 			env[i] = NULL;
 
+			/*
+			for (int i = 0; env[i] != NULL; ++i)
+				std::cout << env[i] << std::endl;
+				*/
+
 			return (env);
 		}
 
@@ -352,29 +361,56 @@ class	Client
 
 			char	**arg = new char*[3];
 
-			if (path_file.find(".py"))
-			{
-				arg[0] = strdup("/Users/hyoghurt/.brew/bin/python3");
-				arg[1] = strdup(path_file.c_str());
-			}
+			arg[0] = strdup(interpreter.c_str());
+			arg[1] = strdup(path_file.c_str());
 			arg[2] = NULL;
 
+			char	**env = create_env();
+
 			/*
+			if (NULL == env)
+				return (500);
+				*/
+
 			for (int i = 0; arg[i] != NULL; ++i)
 				std::cout << arg[i] << std::endl;
-			*/
 
-			char	**env = create_env();
-			int		rv;
+			/*
+			for (int i = 0; env[i] != NULL; ++i)
+				std::cout << env[i] << std::endl;
+				*/
+
+			statusCode = cgi_fork(arg, env);
+
+			for (int i = 0; arg[i] != NULL; ++i)
+				delete arg[i];
+			delete [] arg;
+
+			if (NULL != env)
+			{
+				for (int i = 0; env[i] != NULL; ++i)
+					delete env[i];
+				delete [] env;
+			}
+
+			return (statusCode);
+		}
+
+		int		cgi_fork(char** arg, char** env)
+		{
+			int		status;
 			pid_t	pid;
 			int		pipefd[2];
-
-			for (int i = 0; i != 2; ++i)
-				std::cout << env[i] << std::endl;
 
 			pipe(pipefd);
 
 			pid = fork();
+
+			if (pid == -1)
+			{
+				print_error("fork");
+				return (500);
+			}
 
 			if (pid == 0)
 			{
@@ -383,51 +419,48 @@ class	Client
 				close(pipefd[1]);
 
 				execve(arg[0], arg, env);
-				return (errno);
+				exit (errno);
 			}
 
-			for (int i = 0; arg[i] != NULL; ++i)
-				delete arg[i];
-			delete [] arg;
-
-			for (int i = 0; env[i] != NULL; ++i)
-				delete env[i];
-			delete [] env;
-
-			if (pid == -1)
-			{
-				print_error("fork");
-				return (500);
-			}
-
-			wait(&rv);
+			wait(&status);
 
 			close(pipefd[1]);
 
-			if (WEXITSTATUS(rv) != 0)
+			if (WEXITSTATUS(status) != 0)
 			{
-				print_error("execve exit 0");
 				close(pipefd[0]);
+				print_error("execve exit 0");
 				return (500);
 			}
 
-			if (WEXITSTATUS(rv) == 2)
+			if (WEXITSTATUS(status) == 2)
 			{
-				print_error("execve exit 2");
 				close(pipefd[0]);
+				print_error("execve exit 2");
 				return (404);
 			}
 
-			readByte = read(pipefd[0], buf, BUF_SIZE - 1);
-
-			buf[readByte] = '\0';
-
-			body.assign(buf, readByte);
+			cgi_read(pipefd[0]);
 
 			close(pipefd[0]);
 
 			return (200);
 		}
+
+
+		void	cgi_read(int fd)
+		{
+			readByte = read(fd, buf, BUF_SIZE - 1);
+
+			buf[readByte] = '\0';
+
+			body.assign(buf, readByte);
+
+		}
+
+
+		void	debug_info(const std::string& mes)
+		{ std::cout << YELLOW << get_new_time() << " " << "Cl:" << socket << " " << mes <<  RESET; }
 
 
 
@@ -451,6 +484,7 @@ class	Client
 		std::map<std::string, std::string>	responseHeader;
 		std::map<std::string, std::string>	envCgi;
 		int									statusCode;
+		std::string							interpreter;
 };
 
 #endif
