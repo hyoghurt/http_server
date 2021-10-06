@@ -22,10 +22,10 @@ int deleteFile(const std::string &str) {
 		return 404;
 	}
 }
-
-int main() {
-	std::string str  = "dir/file.html";
-
-	std::cout << "" << deleteFile(str) << std::endl;
-	return 0;
-}
+//
+//int main() {
+//	std::string str  = "dir/file.html";
+//
+//	std::cout << "" << deleteFile(str) << std::endl;
+//	return 0;
+//}
