@@ -4,8 +4,7 @@
 </head>
 <body>
 
-<? 
-echo "Hi PHP"; 
+<?php
 phpinfo();
 ?>
 

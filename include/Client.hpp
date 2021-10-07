@@ -1,7 +1,7 @@
 #ifndef CLIENT_HPP
 # define CLIENT_HPP
 
-# define BUF_SIZE 1024
+# define BUF_SIZE 24
 # define TIME_KEEP_ALIVE 5
 
 # include <iostream>
@@ -21,34 +21,45 @@ class	Client
 		}
 		*/
 
-		Client(const int& socket) : socket(socket)
+		Client(const int& socket, char* addr) : socket(socket), addr(addr)
 		{
 			time(&timeStart);
 			request = "";
 			response = "";
-			responseHeader["Status"];
-			responseHeader["Host"];
-			responseHeader["Content-Length"];
-			responseHeader["Connection"];
+			readByte = 0;
 		}
 
-		/*
 		Client(const Client& oth)	{ *this = oth; }
-		*/
 
 		~Client()
 		{
 			std::cout << "distrutor client" << std::endl;
 		}
 
-		/*
 		Client&	operator= (const Client& oth)
 		{
 			this->socket = oth.socket;
 			this->timeStart = oth.timeStart;
+			this->request = oth.request;
+			this->response = oth.response;
+			this->header = oth.header;
+			this->body = oth.body;
+			this->readByte = oth.readByte;
+			this->json_request = oth.json_request;
+			this->byte_send = oth.byte_send;
+			this->server = oth.server;
+			this->location = oth.location;
+			this->path_file = oth.path_file;
+			this->buf_write = oth.buf_write;
+			this->bytes_write = oth.bytes_write;
+			this->total_bytes_write = oth.total_bytes_write;
+			this->responseHeader = oth.responseHeader;
+			this->envCgi = oth.envCgi;
+			this->statusCode = oth.statusCode;
+			this->interpreter = oth.interpreter;
+			this->addr = oth.addr;
 			return *this;
 		}
-		*/
 
 		int		getSocket(void) const
 		{ return this->socket; }
@@ -73,12 +84,6 @@ class	Client
 
 		void	setResponse(const std::string &response)
 		{ this->response = response; }
-
-		void	debugPrintReadByte(void)
-		{
-			std::cout << YELLOW << get_new_time() << " socketClient:" << socket;
-			std::cout << " get_byte:" << readByte << RESET << '\n';
-		}
 
 		void	create_json_request(void)
 		{
@@ -205,7 +210,7 @@ class	Client
 
 		int		open_file(const std::string& str)
 		{
-			print_debug("open file: " + str);
+			print_debug("F open file: " + str);
 
 			int				length;
 			char*			buffer;
@@ -217,25 +222,35 @@ class	Client
 
 			if (is)
 			{
+				debug_info("open file: " + str);
+
 				is.seekg (0, is.end);
 				length = is.tellg();
 				is.seekg (0, is.beg);
 
-				buffer = new char [length];
+				try
+				{
+					buffer = new char [length];
+				}
+				catch (std::bad_alloc& ba)
+				{
+					print_error("open_file: bad_alloc");
+					return (500);
+				}
 
-				print_info(" Cl:" + std::to_string(socket) + " Reading characters: " + std::to_string(length));
+				debug_info("size file: " + std::to_string(length));
 
 				is.read (buffer,length);
 
 				if (is)
 				{
 					body.assign(buffer, length);
-					print_info(" Cl: " + std::to_string(socket) + " all characters read successfully");
+					debug_info("all characters read successfully");
 				}
 				else
 				{
 					status_code = 500;
-					print_error("Error: only " + std::to_string(is.gcount()) + " could be read");
+					debug_info("Error: read file (only " + std::to_string(is.gcount()) + " could be read)");
 				}
 
 				is.close();
@@ -247,24 +262,26 @@ class	Client
 			return (status_code);
 		}
 
-
-		int				autoindex(void)
+		int				get_run(void)
 		{
-			print_debug("F autoindex");
+			print_debug("F method GET");
 
 			DIR									*dp;
 			struct dirent						*ep;
 			std::vector<std::string>			name_file;
-			std::vector<std::string>::iterator	it;
 			int									status_code;
+			int									found;
 
 			status_code = open_file(path_file);
 
 			if (location->autoindex && status_code == 404)
 			{
-				print_debug("autoindex true");
+				print_debug("F autoindex true");
 
-				path_file.erase(path_file.size() - location->index.size());
+				found = path_file.find(location->index);
+				if (found == std::string::npos)
+					return (404);
+				path_file.erase(found);
 
 				dp = opendir(path_file.c_str());
 				if (NULL != dp)
@@ -279,33 +296,41 @@ class	Client
 					autoindex_create_body(name_file);
 					return (200);
 				}
-				status_code = 404;
 			}
 			return (status_code);
+		}
+
+		int		check_dir_or_file(const std::string& name_file)
+		{
+			struct stat		sb;
+
+			if (-1 == stat((name_file).c_str(), &sb))
+				return (-1);
+			if (S_ISDIR(sb.st_mode))
+				return (1);
+			return (0);
 		}
 
 		int		autoindex_rename_file(std::vector<std::string>& name_file)
 		{
 			std::vector<std::string>::iterator	it;
 			int									ret;
-			struct stat							sb;
 
 			it = name_file.begin() + 2;
 
 			for (; it != name_file.end(); ++it)
 			{
-				if (-1 == stat((path_file + *it).c_str(), &sb))
-					return (-1);
-				if (S_ISDIR(sb.st_mode))
+				ret = check_dir_or_file(path_file + *it);
+				if (ret == 1)
 					(*it).push_back('/');
+				else if (ret == -1)
+					return (-1);
 			}
 			return (0);
 		}
 
 		void	autoindex_create_body(std::vector<std::string>& name_file)
 		{
-			print_debug("F autoindex create body");
-
 			std::vector<std::string>::iterator	it;
 			std::string&						dir = json_request["request_target"];
 
@@ -327,71 +352,111 @@ class	Client
 			body.append("</body></html>\r\n");
 		}
 
-		char**	create_env(void)
+		void	cgi_env(void)
+		{
+			print_debug("F cgi env");
+
+			//envCgi.clear();
+			//envCgi["AUTH_TYPE"] = "";		//delete
+			envCgi["CONTENT_LENGTH"] = json_request["Content-Length"];
+			envCgi["CONTENT_TYPE"] = json_request["Content-Type"];
+			envCgi["GATEWAY_INTERFACE"] = "CGI/0.1";
+			envCgi["PATH_TRANSLATED"] = "./" + location->root + envCgi["PATH_INFO"];
+			envCgi["REMOTE_ADDR"] = addr;
+			//envCgi["REMOTE_HOST"] = "";		//delete
+			//envCgi["REMOTE_IDENT"] = "";	//delete
+			//envCgi["REMOTE_USER"] = "";		//delete
+			envCgi["REQUEST_METHOD"] = json_request["method"];
+			envCgi["SCRIPT_NAME"] = json_request["request_target"];		//!!! write
+			envCgi["SERVER_NAME"] = server->serverName;
+			envCgi["SERVER_PORT"] = server->port;
+			envCgi["SERVER_PROTOCOL"] = "HTTP/1.1";
+			envCgi["SERVER_SOFTWARE"] = "La Femme Nikita 0.1";
+		}
+
+		char**	cgi_create_env(void)
 		{
 			print_debug("F create env");
 
 			std::map<std::string, std::string>::iterator	it;
+			char											**env;
+			int												i;
 
-			int		size = envCgi.size();
-			int		i = 0;
+			cgi_env();
 
-			std::cout << "size= " << size << '\n';
+			try
+			{
+				env = new char*[envCgi.size() + 1];
 
-			if (size == 0)
+				i = 0;
+				for (it = envCgi.begin(); it != envCgi.end(); ++it)
+				{
+					env[i] = strdup(( (*it).first + "=\"" + (*it).second + "\"").c_str());
+					if (!env[i])
+						return (free_env(env));
+				}
+				env[i] = 0;
+			}
+			catch (std::bad_alloc& ba)
+			{
+				print_error("cgi_create_env: bad_alloc");
 				return (0);
-
-			char	**env = new char*[size + 1];
-
-			for (it = envCgi.begin(); it != envCgi.end(); ++it)
-				env[i++] = strdup(( (*it).first + "=\"" + (*it).second + "\"").c_str());
-			env[i] = NULL;
-
-			/*
-			for (int i = 0; env[i] != NULL; ++i)
-				std::cout << env[i] << std::endl;
-				*/
-
+			}
 			return (env);
 		}
 
-		int	run_cgi(void)
+		char**	cgi_create_arg(void)
+		{
+			char	**arg;
+
+			try
+			{
+				arg = new char*[3];
+
+				arg[0] = strdup(interpreter.c_str());
+				if (!arg[0])
+					return (free_env(arg));
+				arg[1] = strdup(path_file.c_str());
+				if (!arg[1])
+					return (free_env(arg));
+				arg[2] = 0;
+			}
+			catch (std::bad_alloc& ba)
+			{
+				print_error("cgi_create_env: bad_alloc");
+				return (0);
+			}
+
+			return (arg);
+		}
+
+		char**	free_env(char** env)
+		{
+			print_debug("F free env");
+			int		i = 0;
+
+			if (!env)
+				return (0);
+			while (env[i])
+				free(env[i++]);
+			delete [] env;
+			return (0);
+		}
+
+		int		cgi_run(void)
 		{
 			print_debug("F run cgi");
 
-			char	**arg = new char*[3];
+			char	**arg = cgi_create_arg();
+			char	**env = cgi_create_env();
 
-			arg[0] = strdup(interpreter.c_str());
-			arg[1] = strdup(path_file.c_str());
-			arg[2] = NULL;
+			statusCode = 500;
 
-			char	**env = create_env();
+			if (arg && env)
+				statusCode = cgi_fork(arg, env);
 
-			/*
-			if (NULL == env)
-				return (500);
-				*/
-
-			for (int i = 0; arg[i] != NULL; ++i)
-				std::cout << arg[i] << std::endl;
-
-			/*
-			for (int i = 0; env[i] != NULL; ++i)
-				std::cout << env[i] << std::endl;
-				*/
-
-			statusCode = cgi_fork(arg, env);
-
-			for (int i = 0; arg[i] != NULL; ++i)
-				delete arg[i];
-			delete [] arg;
-
-			if (NULL != env)
-			{
-				for (int i = 0; env[i] != NULL; ++i)
-					delete env[i];
-				delete [] env;
-			}
+			free_env(arg);
+			free_env(env);
 
 			return (statusCode);
 		}
@@ -402,6 +467,8 @@ class	Client
 			pid_t	pid;
 			int		pipefd[2];
 
+			statusCode = 200;
+
 			pipe(pipefd);
 
 			pid = fork();
@@ -409,9 +476,9 @@ class	Client
 			if (pid == -1)
 			{
 				print_error("fork");
+				statusCode = 500;
 				return (500);
 			}
-
 			if (pid == 0)
 			{
 				close(pipefd[0]);
@@ -428,23 +495,20 @@ class	Client
 
 			if (WEXITSTATUS(status) != 0)
 			{
-				close(pipefd[0]);
+				statusCode = 500;
 				print_error("execve exit 0");
-				return (500);
 			}
-
-			if (WEXITSTATUS(status) == 2)
+			else if (WEXITSTATUS(status) == 2)
 			{
-				close(pipefd[0]);
-				print_error("execve exit 2");
-				return (404);
+				statusCode = 404;
+				print_info("execve exit 2");
 			}
-
-			cgi_read(pipefd[0]);
+			else
+				cgi_read(pipefd[0]);
 
 			close(pipefd[0]);
 
-			return (200);
+			return (statusCode);
 		}
 
 
@@ -473,20 +537,18 @@ class	Client
 			std::string absolutPath = path + std::string("/") + str;
 			std::cout << absolutPath << std::endl;
 
-			if (unlink(str.c_str()) == 0)
-			{
-				std::cout << "\"" << str << "\" was deleted" << std::endl;
-				return 204;
-			}
-			else
+			if (unlink(str.c_str()) == -1)
 			{
 				std::cout << "something wrong" << std::endl;
 				return 404;
 			}
+
+			std::cout << "\"" << str << "\" was deleted" << std::endl;
+			return 204;
 		}
 
 		void	debug_info(const std::string& mes)
-		{ std::cout << YELLOW << get_new_time() << " " << "Cl:" << socket << " " << mes <<  RESET; }
+		{ std::cout << YELLOW << get_new_time() << " " << "Cl:" << socket << " " << mes <<  RESET << '\n'; }
 
 
 
@@ -511,6 +573,7 @@ class	Client
 		std::map<std::string, std::string>	envCgi;
 		int									statusCode;
 		std::string							interpreter;
+		std::string							addr;
 };
 
 #endif

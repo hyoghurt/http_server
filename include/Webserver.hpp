@@ -1,8 +1,6 @@
 #ifndef WEBSERVER_HPP
 # define WEBSERVER_HPP
 
-# define BUF_SIZE 1024
-
 # define TIME_KEEP_ALIVE 5
 
 //#include <sys/time.h>
@@ -38,6 +36,7 @@ class	Webserver
 
 			interpreter[".py"] = "/Users/hyoghurt/.brew/bin/python3";
 			interpreter[".php"] = "/usr/bin/php";
+			interpreter[".perl"] = "/usr/bin/perl";
 		}
 		Webserver(const Webserver& oth) { *this = oth; }
 		~Webserver()
@@ -49,6 +48,7 @@ class	Webserver
 				std::cout << "Webserver: Close socket listen: " << *it << std::endl;
 				close (*it);
 			}
+
 		}
 
 		Webserver&	operator= (const Webserver& oth)
@@ -59,6 +59,39 @@ class	Webserver
 			this->statusCode = oth.statusCode;
 			return *this;
 		}
+
+		/*
+		std::vector<std::string>	split_string(std::string s, const std::string& delimiter)
+		{
+			std::vector<std::string>	result;
+			std::string					token;
+			size_t						pos = 0;
+
+			while ((pos = s.find(delimiter)) != std::string::npos)
+			{
+			    token = s.substr(0, pos);
+				result.push_back(token);
+			    s.erase(0, pos + delimiter.length());
+			}
+			result.push_back(s);
+			return (result);
+		}
+
+		void	inter(void)
+		{
+			std::string							path_;
+			std::vector<std::string>			token;
+			std::vector<std::string>::iterator	it;
+
+			path_ = getenv("PATH");
+			token = split_string(path_, ":");
+
+			for (it = token.begin(); it != token.end(); ++it)
+				std::cout << (*it) << std::endl;
+
+			//exit(0);
+		}
+		*/
 
 		//debug_______________________________________________________
 		void		makeServer(Server& serv)
@@ -192,8 +225,6 @@ class	Webserver
 		
 		void	createFdSet(int &max_d, fd_set &readfds, fd_set &writefds)
 		{
-			std::cout << BLUE << "create fd set" << RESET << std::endl;
-
 			std::vector<int>::iterator		it_ls;
 			std::vector<Client>::iterator	it_client;
 
@@ -217,8 +248,6 @@ class	Webserver
 
 		void	addNewClient(fd_set &readfds)
 		{
-			std::cout << BLUE << "add new client" << RESET << std::endl;
-
 			std::vector<int>::iterator		it_ls;
 			int								socket_listen;
 			int								socket_client;
@@ -239,7 +268,7 @@ class	Webserver
 					{
 						fcntl(socket_client, F_SETFL, O_NONBLOCK);
 						print_connect_info(socket_listen, socket_client, addr_cl);
-						client.push_back(Client(socket_client));
+						client.push_back(Client(socket_client, inet_ntoa(addr_cl.sin_addr)));
 					}
 				}
 			}
@@ -247,13 +276,12 @@ class	Webserver
 
 		int		checkCloseClient(Client& client)
 		{
+			time_t		get_time;
+
 			if (client.responseHeader["Connection"] == "Connection: close\r\n")
 				return (1);
 
-			time_t		get_time;
-
 			time(&get_time);
-
 			if (get_time - client.timeStart > TIME_KEEP_ALIVE)
 				return (1);
 
@@ -262,7 +290,6 @@ class	Webserver
 
 		void	processingClient(fd_set &readfds, fd_set &writefds)
 		{
-			print_debug("F processing client");
 			std::vector<Client>::iterator	it_client;
 			int								socket_client;
 
@@ -280,66 +307,71 @@ class	Webserver
 
 				if (checkCloseClient(*it_client))
 				{
-					debugPrintColorClient(YELLOW, socket_client);
-					std::cout << YELLOW <<  " close socket" << RESET << '\n';
+					(*it_client).debug_info("close socket");
 
 					close(socket_client);
 					it_client = client.erase(it_client);
-
 					continue;
 				}
-
 				++it_client;
 			}
 		}
 
 		void	readSocket(Client& client)
 		{
-			std::cout << BLUE << "read socket" << RESET << std::endl;
+			int				bytes, found, found_2;
+			std::string		len;
 
-			std::string		str;
+			bytes = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
 
-			//читаем данные с клиентского сокета в buf____________________________
-			client.readByte = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
-
-			debugPrintColorClient(YELLOW, client.socket);
-			std::cout << YELLOW << " get bytes:" << client.readByte << RESET << '\n';
-
-			if (client.readByte > 0)
+			if (bytes > 0)
 			{
-				client.setTimeStart();
+				client.debug_info("get bytes: " + std::to_string(bytes));
 
-				client.buf[client.readByte] = '\0';
+				client.buf[bytes] = '\0';
 				client.request.append(client.buf);
 
-				std::cout << client.request << std::endl;
+				if (client.readByte == 0)
+				{
+					if (client.request.find("\r\n\r\n") != std::string::npos)
+					{
+						found = client.request.find("Content-Length:");
+						if (found != std::string::npos)
+						{
+							found_2 = client.request.find("\r\n", found);
+							len = client.request.substr(found + 16, found_2 - (found + 16));
+							client.readByte = atoi(len.c_str());
+						}
+						client.readByte += client.request.find("\r\n\r\n") + 4;
+					}
+				}
+				if (client.request.size() == client.readByte)
+				{
+					std::cout << client.request << std::endl;
 
-				//проверяем получили ли все данные_______________________________
-				create_response(client);
-				//shutdown(client.socket, 0);
+					client.readByte = 0;
+					create_response(client);
+					shutdown(client.socket, 0);
+				}
 			}
 		}
 
 		void	writeSocket(Client& client)
 		{
-			print_debug("F write socket");
-			int	n;
+			int		n;
 
-			n = send(client.socket, client.buf_write + client.total_bytes_write, client.bytes_write, 0);
+			n = send(client.socket, client.response.c_str(), client.response.size(), 0);
 			if (-1 == n)
 				print_error("Error send");
 			else
 			{
-				client.total_bytes_write += n;
-				client.bytes_write -= n;
+				client.response.erase(0, n);
 
-				debugPrintColorClient(YELLOW, client.socket);
-				print_info(" write bytes: " + std::to_string(n) + " ost bytes write:" + std::to_string(client.bytes_write));
+				client.debug_info("write bytes: " + std::to_string(n) + " ost bytes write:" + std::to_string(client.response.size()));
 
-				if (client.bytes_write == 0)
+				if (client.response.size() == 0)
 					shutdown(client.socket, 1);
 			}
-			//exit(0);
 		}
 
 		void	create_response(Client& client)
@@ -349,6 +381,7 @@ class	Webserver
 			int		status_code;
 
 			client.create_json_request();
+			client.request.clear();
 
 			status_code = check_server_location(client);
 
@@ -368,20 +401,11 @@ class	Webserver
 
 			client.response_total();
 
-			client.total_bytes_write = 0;
-			client.bytes_write = client.response.size();
-
-			client.buf_write = new char [client.bytes_write];
-			strncpy(client.buf_write, client.response.c_str(), client.bytes_write);
-
 			writeSocket(client);
 
-			std::cout << client.header << std::endl;
-			std::cout << client.body << std::endl;
-
+			std::cout << client.header << client.body << std::endl;
 			//exit(0);
 		}
-
 
 		int		check_cgi(Client& client)
 		{
@@ -392,17 +416,17 @@ class	Webserver
 				if (client.path_file.find((*it).first) != std::string::npos)
 				{
 					client.interpreter = (*it).second;
-					return (client.run_cgi());
+					return (client.cgi_run());
 				}
 			}
-			return (client.autoindex());
+			if (client.json_request["method"] == "GET")
+				return (client.get_run());
+			return (500);
 		}
 
 		//старт сздания ответа_______________________________________________________
 		int		check_server_location(Client& client)
 		{
-			print_debug("F check server location");
-
 			client.server = find_server(client);
 			if (client.server == 0)
 				return (400);
@@ -420,15 +444,12 @@ class	Webserver
 			if (client.json_request["method"] == "DELETE")
 				return (client.deleteFile());
 
-			if (client.json_request["method"] == "GET")
-				return (check_cgi(client));
-
-			return (500);
+			return (check_cgi(client));
 		}
 
 		Server*		find_server(Client& client)
 		{
-			std::cout << BLUE << "find server" << RESET << std::endl;
+			print_debug("F find server");
 
 			std::vector<Server>::iterator	it;
 			std::string						host;
@@ -457,18 +478,16 @@ class	Webserver
 
 		Location*	find_location(Client &client)
 		{
-			print_debug("F find loacation");
-
 			std::map<std::string, Location>::iterator	it;
 			std::string									request_target;
 			int											found;
 
 			request_target = client.json_request["request_target"];
 
-			print_debug("find loacation for target: [" + request_target + "]");
+			print_debug("F find loacation for target: [" + request_target + "]");
 
-			found = request_target.find_last_of("?");
-			if (-1 != found)
+			found = request_target.find("?");
+			if (std::string::npos != found)
 				request_target.erase(found);
 
 			while (request_target.length() != 0)
@@ -484,41 +503,41 @@ class	Webserver
 					return (0);
 
 				found = request_target.find_last_of("/");
+				if (std::string::npos == found)
+					return (0);
+
 				if (found == 0)
 					found = 1;
-				if (found == -1)
-					return (0);
 
 				request_target.erase(found);
 			}
-
 			return (0);
 		}
 
 		void	parser_url(std::map<std::string, Location>::iterator it, Client& client)
 		{
-			print_debug("F create path file client");
-			print_debug("location: [" + (*it).first + "]");
+			print_debug("F create client.path_file (location: [" + (*it).first + "])");
 
-			std::string	request_target = client.json_request["request_target"];
+			int				found;
+			std::string		request_target = client.json_request["request_target"];
 
 			if ((*it).first != "/")
 				request_target.erase(0, (*it).first.size());
 
 			client.path_file = (*it).second.root + request_target;
 
-			int	found = client.path_file.find_last_of("?");
-			if (-1 != found)
+			found = client.path_file.find('?');
+			if (std::string::npos != found)
 			{
 				client.envCgi["QUERY_STRING"] = client.path_file.substr(found + 1);
 				client.path_file.erase(found);
 			}
 
 			found = client.path_file.find('.');
-			if (-1 != found)
+			if (std::string::npos != found)
 			{
 				found = client.path_file.find('/', found);
-				if (-1 != found)
+				if (std::string::npos != found)
 				{
 					client.envCgi["PATH_INFO"] = client.path_file.substr(found);
 					client.path_file.erase(found);
@@ -526,13 +545,14 @@ class	Webserver
 			}
 			else
 			{
-				int	i = client.path_file.size();
-				if (i > 0 && client.path_file[i - 1] != '/')
-					client.path_file += "/";
-				client.path_file += (*it).second.index;
+				if (1 == client.check_dir_or_file(client.path_file))
+				{
+					if (client.path_file.find_last_of('/') != (client.path_file.size() - 1))
+						client.path_file += "/";
+					client.path_file += (*it).second.index;
+				}
 			}
-
-			print_debug("client.path:" + client.path_file);
+			client.debug_info("client.path_file:" + client.path_file);
 		}
 
 		void	debugPrintMessage(const std::string& mes)
