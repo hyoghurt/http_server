@@ -43,16 +43,21 @@ def client_delete(ip, port, file_name):
     connect.close()
 
 
+def client_post(ip, port, file_name):
+    print ("----------------------------")
+    print("\n\n")
+    print(ip + ":" + str(port))
+    print("\n");
 
-def client_post(ip, port):
-    print ("\n\npost\n\n")
     connect = http.client.HTTPConnection(ip, port)
 
-    headers = {'Content-type': 'text/plain'}
+    headers = { 'Content-type': 'text/plain',
+                'Content-Length': '5'
+                }
+    body = "filrl"
 
-    foo = "loli_pop";
+    connect.request('POST', file_name, body,  headers)
 
-    connect.request('POST', '/post', foo, headers)
 
     response = connect.getresponse()
     print (response.version, response.status, response.reason)
@@ -61,9 +66,11 @@ def client_post(ip, port):
     for i in header:
         print (i)
 
-    print(response.read().decode())
-
+    print (response.read().decode())
+    print ("----------------------------")
     connect.close()
+
+
     '''
     headers = {'Content-type': 'application/json'}
 
@@ -87,7 +94,6 @@ def client_post(ip, port):
 my_serv = "127.0.0.1"
 port_m = 9000
 
-#client_post(my_serv, port_m)
+client_post(my_serv, port_m, "/post/test.txt")
 #client_get(my_serv, port_m, "/cgi-bin/hello.php/with/additional/path?and=a&query=string")
-#client_get(my_serv, port_m, "/cgi-bin/hello.php/with/additional/path?and=a&query=string")
-client_delete(my_serv, port_m, "/delete/del.h")
+#client_delete(my_serv, port_m, "/delete/4")

@@ -27,6 +27,7 @@ class	Client
 			request = "";
 			response = "";
 			readByte = 0;
+			cgi_f = 0;
 		}
 
 		Client(const Client& oth)	{ *this = oth; }
@@ -46,18 +47,14 @@ class	Client
 			this->body = oth.body;
 			this->readByte = oth.readByte;
 			this->json_request = oth.json_request;
-			this->byte_send = oth.byte_send;
 			this->server = oth.server;
 			this->location = oth.location;
 			this->path_file = oth.path_file;
-			this->buf_write = oth.buf_write;
-			this->bytes_write = oth.bytes_write;
-			this->total_bytes_write = oth.total_bytes_write;
 			this->responseHeader = oth.responseHeader;
 			this->envCgi = oth.envCgi;
-			this->statusCode = oth.statusCode;
 			this->interpreter = oth.interpreter;
 			this->addr = oth.addr;
+			this->cgi_f = oth.cgi_f;
 			return *this;
 		}
 
@@ -85,51 +82,80 @@ class	Client
 		void	setResponse(const std::string &response)
 		{ this->response = response; }
 
-		void	create_json_request(void)
+
+		std::pair<std::string, std::string>		return_key_val(const std::string& str)
 		{
-			size_t								pos;
-			size_t								pos_n;
-			size_t								start(0);
-			size_t								start_n(0);
-			std::string							tmp;
-			std::map<std::string, std::string>	jsn;
-			std::string							key;
-			std::string							value;
+			int				start(0);
+			int				end;
+			std::string		key;
+			std::string		val;
 
-			pos_n = request.find(" ", start_n);
-			jsn["method"] = request.substr(start_n, pos_n - start_n);
-
-			start_n = pos_n + 1;
-			pos_n = request.find(" ", start_n);
-			jsn["request_target"] = request.substr(start_n, pos_n - start_n);
-		
-			start_n = pos_n + 1;
-			pos_n = request.find("\r", start_n);
-			jsn["http_version"] = request.substr(start_n, pos_n - start_n);
-		
-			start_n = pos_n + 2;
-			pos_n = request.find("\n", start_n);
-		
-			while (pos_n != std::string::npos)
+			end = str.find(":");
+			if (end != std::string::npos)
 			{
-				tmp = request.substr(start_n, pos_n - start_n - 1);
-		
-				if (tmp.length() == 0)
-					break;
-		
-				start = 0;
-				pos = tmp.find(":", start);
-				key = tmp.substr(start, pos - start);
-		
-				start = pos + 2;
-				value = tmp.substr(start);
-				jsn[key] = value;
-		
-				start_n = pos_n + 1;
-				pos_n = request.find("\n", start_n);
+				key = str.substr(start, end - start);
+				val = str.substr(end + 2);
 			}
 
-			json_request = jsn;
+			return (std::pair<std::string, std::string>(key, val));
+		}
+
+		void	create_json_request(void)
+		{
+			size_t			end;
+			size_t			start(0);
+			std::string		tmp;
+
+			end = request.find("\r\n\r\n");
+			if (end == std::string::npos)
+				return ;
+			json_request["body"] = request.substr(end + 4);
+			request.erase(end);
+
+			end = request.find(" ", start);
+			if (end == std::string::npos)
+				return ;
+			json_request["method"] = request.substr(start, end - start);
+
+			start = end + 1;
+			end = request.find(" ", start);
+			if (end == std::string::npos)
+				return ;
+			json_request["request_target"] = request.substr(start, end - start);
+
+			start = end + 1;
+			end = request.find("\r", start);
+			if (end == std::string::npos)
+				return ;
+			json_request["http_version"] = request.substr(start, end - start);
+
+			start = end + 2;
+			end = request.find("\n", start);
+			if (end == std::string::npos)
+				return ;
+			while (end != std::string::npos)
+			{
+				tmp = request.substr(start, end - start - 1);
+		
+				json_request.insert(return_key_val(tmp));
+		
+				start = end + 1;
+				end = request.find("\n", start);
+			}
+
+			tmp = request.substr(start);
+			json_request.insert(return_key_val(tmp));
+		}
+
+
+		void	deb()
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			for (it = json_request.begin(); it != json_request.end(); ++it)
+			{
+				std::cout << (*it).first << "=" << (*it).second << std::endl;
+			}
 		}
 
 		int		check_501(void)
@@ -142,6 +168,22 @@ class	Client
 			{
 				responseHeader["Allow"] = "Allow: GET, POST, DELETE\r\n";
 				return (1);
+			}
+			return (0);
+		}
+
+		int		check_413(void)
+		{
+			int				size;
+
+			if (0 == server->clientMaxBodySize)
+				return (0);
+
+			if (!json_request["Content-Length"].empty())
+			{
+				size = atoi(json_request["Content-Length"].c_str());
+				if (size > server->clientMaxBodySize)
+					return (1);
 			}
 			return (0);
 		}
@@ -203,6 +245,7 @@ class	Client
 				if (!(*it).second.empty())
 					header += (*it).second;
 			}
+			//if (!cgi_f)
 			header += "\r\n";
 
 			response = header + body;
@@ -260,6 +303,23 @@ class	Client
 				status_code = 404;
 
 			return (status_code);
+		}
+
+		int				post_run(void)
+		{
+			print_debug("F post file: " + path_file);
+
+			std::ofstream	myfile(path_file, std::ios::binary);
+
+			if (!myfile)
+			{
+				debug_info(path_file + " no open");
+				return (500);
+			}
+			myfile << json_request["body"];
+			myfile.close();
+			debug_info(path_file + " mod");
+			return (201);
 		}
 
 		int				get_run(void)
@@ -379,13 +439,13 @@ class	Client
 			print_debug("F create env");
 
 			std::map<std::string, std::string>::iterator	it;
-			char											**env;
 			int												i;
 
 			cgi_env();
 
 			try
 			{
+				char											**env;
 				env = new char*[envCgi.size() + 1];
 
 				i = 0;
@@ -394,15 +454,24 @@ class	Client
 					env[i] = strdup(( (*it).first + "=\"" + (*it).second + "\"").c_str());
 					if (!env[i])
 						return (free_env(env));
+					++i;
+					std::cout << env[i] << std::endl;
 				}
 				env[i] = 0;
+
+				std::cout << "sdffffffffffffffffffffffffffffffffffflsdfldsfdsf" << std::endl;
+				dech(env);
+				std::cout << "sdffffffffffffffffffffffffffffffffffflsdfldsfdsf" << std::endl;
+
+				return (env);
 			}
 			catch (std::bad_alloc& ba)
 			{
 				print_error("cgi_create_env: bad_alloc");
 				return (0);
 			}
-			return (env);
+
+
 		}
 
 		char**	cgi_create_arg(void)
@@ -443,22 +512,53 @@ class	Client
 			return (0);
 		}
 
+		void	de()
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			for (it = envCgi.begin(); it != envCgi.end(); ++it)
+			{
+				std::cout << (*it).first << "=" << (*it).second << std::endl;
+			}
+		}
+
+		void	dech(char** env)
+		{
+			std::cout << "dddddddddddddddddddddddddddddeccccccch" << std::endl;
+			int		i = 0;
+
+			std::cout << env << std::endl;
+			std::cout << *env << std::endl;
+
+			while (env[i] != NULL)
+			{
+				std::cout << "1" << std::endl;
+				std::cout << env[i] << std::endl;
+				++i;
+			}
+		}
+
 		int		cgi_run(void)
 		{
 			print_debug("F run cgi");
 
+			cgi_f = 1;
+
 			char	**arg = cgi_create_arg();
 			char	**env = cgi_create_env();
+			int		status_code;
 
-			statusCode = 500;
+			dech(env);
+
+			status_code = 500;
 
 			if (arg && env)
-				statusCode = cgi_fork(arg, env);
+				status_code = cgi_fork(arg, env);
 
 			free_env(arg);
 			free_env(env);
 
-			return (statusCode);
+			return (status_code);
 		}
 
 		int		cgi_fork(char** arg, char** env)
@@ -466,8 +566,9 @@ class	Client
 			int		status;
 			pid_t	pid;
 			int		pipefd[2];
+			int		status_code;
 
-			statusCode = 200;
+			status_code = 200;
 
 			pipe(pipefd);
 
@@ -476,7 +577,7 @@ class	Client
 			if (pid == -1)
 			{
 				print_error("fork");
-				statusCode = 500;
+				status_code = 500;
 				return (500);
 			}
 			if (pid == 0)
@@ -495,12 +596,12 @@ class	Client
 
 			if (WEXITSTATUS(status) != 0)
 			{
-				statusCode = 500;
+				status_code = 500;
 				print_error("execve exit 0");
 			}
 			else if (WEXITSTATUS(status) == 2)
 			{
-				statusCode = 404;
+				status_code = 404;
 				print_info("execve exit 2");
 			}
 			else
@@ -508,42 +609,33 @@ class	Client
 
 			close(pipefd[0]);
 
-			return (statusCode);
+			return (status_code);
 		}
 
 
 		void	cgi_read(int fd)
 		{
-			readByte = read(fd, buf, BUF_SIZE - 1);
+			int		bytes;
 
-			buf[readByte] = '\0';
+			body.clear();
 
-			body.assign(buf, readByte);
-
+			bytes = read(fd, buf, BUF_SIZE - 1);
+			while (bytes > 0)
+			{
+				buf[bytes] = '\0';
+				body.append(buf);
+				bytes = read(fd, buf, BUF_SIZE - 1);
+			}
 		}
 
 		int		deleteFile(void)
 		{
-			print_debug("F delete file");
+			print_debug("F delete file: " + path_file);
 
-			std::string	str = path_file;
-
-			std::string path = getenv("PWD");
-			std::cout << "PWD: " << path << std::endl;
-
-			if (path.empty())
-				return 500;
-
-			std::string absolutPath = path + std::string("/") + str;
-			std::cout << absolutPath << std::endl;
-
-			if (unlink(str.c_str()) == -1)
-			{
-				std::cout << "something wrong" << std::endl;
+			if (unlink(path_file.c_str()) == -1)
 				return 404;
-			}
 
-			std::cout << "\"" << str << "\" was deleted" << std::endl;
+			debug_info(path_file + " was deleted");
 			return 204;
 		}
 
@@ -562,18 +654,14 @@ class	Client
 		char								buf[BUF_SIZE];
 		int									readByte;
 		std::map<std::string, std::string>	json_request;
-		size_t								byte_send;
 		Server*								server;
 		Location*							location;
 		std::string							path_file;
-		char*								buf_write;
-		int									bytes_write;
-		int									total_bytes_write;
 		std::map<std::string, std::string>	responseHeader;
 		std::map<std::string, std::string>	envCgi;
-		int									statusCode;
 		std::string							interpreter;
 		std::string							addr;
+		int									cgi_f;
 };
 
 #endif

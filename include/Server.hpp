@@ -46,7 +46,7 @@ class	Server
 
 		Server(const std::string& ipAddress, const std::string& port,
 				const std::string& serverName,
-				const std::string& bodySize,
+				const int& bodySize,
 				const std::map<int, std::string> errorPage,
 				const std::map<std::string, Location> location)
 		{
@@ -62,7 +62,7 @@ class	Server
 		std::string							ipAddress;
 		std::string							port;
 		std::string							serverName;
-		std::string							clientMaxBodySize;
+		int									clientMaxBodySize;
 		std::map<int, std::string>			errorPage;
 		std::map<std::string, Location>		location;
 };

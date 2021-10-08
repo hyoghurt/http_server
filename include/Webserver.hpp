@@ -27,16 +27,19 @@ class	Webserver
 		Webserver()
 		{
 			statusCode[200] = "HTTP/1.1 200 OK\r\n";
+			statusCode[201] = "HTTP/1.1 201 Created\r\n";
 			statusCode[204] = "HTTP/1.1 204 No Content\r\n";
 			statusCode[400] = "HTTP/1.1 400 Bad Request\r\n";
 			statusCode[404] = "HTTP/1.1 404 Not Found\r\n";
 			statusCode[405] = "HTTP/1.1 405 Method Not Allowed\r\n";
+			statusCode[413] = "HTTP/1.1 413 Payload Too Large\r\n";
 			statusCode[500] = "HTTP/1.1 500 Internal Server Error\r\n";
 			statusCode[501] = "HTTP/1.1 501 Not Implemented\r\n";
 
 			interpreter[".py"] = "/Users/hyoghurt/.brew/bin/python3";
 			interpreter[".php"] = "/usr/bin/php";
 			interpreter[".perl"] = "/usr/bin/perl";
+			interpreter[".sh"] = "/bin/sh";
 		}
 		Webserver(const Webserver& oth) { *this = oth; }
 		~Webserver()
@@ -326,6 +329,8 @@ class	Webserver
 
 			if (bytes > 0)
 			{
+				client.setTimeStart();
+
 				client.debug_info("get bytes: " + std::to_string(bytes));
 
 				client.buf[bytes] = '\0';
@@ -367,7 +372,7 @@ class	Webserver
 			{
 				client.response.erase(0, n);
 
-				client.debug_info("write bytes: " + std::to_string(n) + " ost bytes write:" + std::to_string(client.response.size()));
+				client.debug_info("write bytes: " + std::to_string(n) + " ost bytes:" + std::to_string(client.response.size()));
 
 				if (client.response.size() == 0)
 					shutdown(client.socket, 1);
@@ -378,21 +383,19 @@ class	Webserver
 		{
 			print_debug("F create response");
 
-			int		status_code;
+			int				status_code;
+			std::string		path_file;
 
 			client.create_json_request();
 			client.request.clear();
 
-			status_code = check_server_location(client);
-
+			status_code = processing_request(client);
 			client.responseHeader["Status"] = statusCode[status_code];
 
 			if (200 != status_code)
 			{
 				if (NULL != client.server)
 				{
-					std::string		path_file;
-
 					path_file = client.server->errorPage[status_code];
 					if (!path_file.empty())
 						client.open_file(path_file);
@@ -400,36 +403,24 @@ class	Webserver
 			}
 
 			client.response_total();
+			std::cout << client.response << std::endl;
 
 			writeSocket(client);
-
-			std::cout << client.header << client.body << std::endl;
+			client.cgi_f = 0;
 			//exit(0);
 		}
 
-		int		check_cgi(Client& client)
+		//старт сздания ответа_______________________________________________________
+		int		processing_request(Client& client)
 		{
 			std::map<std::string, std::string>::iterator	it;
 
-			for (it = interpreter.begin(); it != interpreter.end(); ++it)
-			{
-				if (client.path_file.find((*it).first) != std::string::npos)
-				{
-					client.interpreter = (*it).second;
-					return (client.cgi_run());
-				}
-			}
-			if (client.json_request["method"] == "GET")
-				return (client.get_run());
-			return (500);
-		}
-
-		//старт сздания ответа_______________________________________________________
-		int		check_server_location(Client& client)
-		{
 			client.server = find_server(client);
 			if (client.server == 0)
 				return (400);
+
+			if (client.check_413())
+				return (413);
 
 			client.location = find_location(client);
 			if (client.location == 0)
@@ -444,7 +435,19 @@ class	Webserver
 			if (client.json_request["method"] == "DELETE")
 				return (client.deleteFile());
 
-			return (check_cgi(client));
+			for (it = interpreter.begin(); it != interpreter.end(); ++it)
+			{
+				if (client.path_file.find((*it).first) != std::string::npos)
+				{
+					client.interpreter = (*it).second;
+					return (client.cgi_run());
+				}
+			}
+
+			if (client.json_request["method"] == "GET")
+				return (client.get_run());
+
+			return (client.post_run());
 		}
 
 		Server*		find_server(Client& client)
@@ -529,7 +532,7 @@ class	Webserver
 			found = client.path_file.find('?');
 			if (std::string::npos != found)
 			{
-				client.envCgi["QUERY_STRING"] = client.path_file.substr(found + 1);
+				client.envCgi["QUERY_STRING"] = "\"" + client.path_file.substr(found + 1) + "\"";
 				client.path_file.erase(found);
 			}
 
