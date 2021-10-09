@@ -1,7 +1,7 @@
 #ifndef SERVER_HPP
 # define SERVER_HPP
 
-# include "add_funct.hpp"
+# include "add_func.hpp"
 # include "def_color.hpp"
 # include "Location.hpp"
 

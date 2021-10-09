@@ -1,7 +1,7 @@
 INCLUDE			= include
 NAME			= webserv
 SRC				= main.cpp \
-				  add_funct.cpp
+				  add_func.cpp
 
 SRCDIR			= src
 OBJDIR			= obj

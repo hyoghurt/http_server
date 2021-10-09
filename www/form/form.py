@@ -18,7 +18,7 @@ form = cgi.FieldStorage()
 first_name = form.getvalue('first_name')
 last_name = form.getvalue('last_name')
 
-#print("Content-type:text/html\r\n")
+print("Content-type:text/html\r\n\r")
 print("<html>")
 print("<head>")
 print("<title>Hello - Second CGI Program</title>")

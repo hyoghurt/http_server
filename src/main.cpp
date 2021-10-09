@@ -1,15 +1,14 @@
-# define DEBUG
+//# define DEBUG
 
 #include "Webserver.hpp"
-#include "add_funct.hpp"
 #include "Location.hpp"
-#include <stdlib.h>
+#include <cstdlib>
 
 int	main(int argc, char **argv)
 {
 	Webserver				webserver;
 
-#ifdef DEBUG
+//#ifdef DEBUG
 	std::string							root;
 	bool								autoindex;
 	std::string							index;
@@ -79,7 +78,7 @@ int	main(int argc, char **argv)
 	Server			serv(host, port, server_name, body_size, error_page, location);
 
 	webserver.makeServer(serv);
-#endif
+//#endif
 
 	/*
 	std::string			a;

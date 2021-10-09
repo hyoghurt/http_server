@@ -1,4 +1,4 @@
-#include "add_funct.hpp"
+#include "add_func.hpp"
 
 void	print_debug(const std::string& str)
 { std::cout << BLUE << str << RESET << '\n'; }
@@ -22,13 +22,13 @@ void			print_connect_info(int socket_listen, int fd_cl, struct sockaddr_in addr_
 	std::cout << " socketClient: " << fd_cl << NO_C << '\n';
 }
 
-std::string		get_new_time(void)
+std::string		get_new_time()
 {
 	struct timeval	tv;
 	struct tm		*info;
 	char			buffer[64];
  
-	gettimeofday(&tv, NULL);
+	gettimeofday(&tv, nullptr);
 	info = localtime(&tv.tv_sec);
 	strftime (buffer, sizeof buffer, "%x %X %Y", info);
 

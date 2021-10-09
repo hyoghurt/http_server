@@ -26,19 +26,21 @@ class	Webserver
 	public:
 		Webserver()
 		{
-			statusCode[200] = "HTTP/1.1 200 OK\r\n";
-			statusCode[201] = "HTTP/1.1 201 Created\r\n";
-			statusCode[204] = "HTTP/1.1 204 No Content\r\n";
-			statusCode[400] = "HTTP/1.1 400 Bad Request\r\n";
-			statusCode[404] = "HTTP/1.1 404 Not Found\r\n";
-			statusCode[405] = "HTTP/1.1 405 Method Not Allowed\r\n";
-			statusCode[413] = "HTTP/1.1 413 Payload Too Large\r\n";
-			statusCode[500] = "HTTP/1.1 500 Internal Server Error\r\n";
-			statusCode[501] = "HTTP/1.1 501 Not Implemented\r\n";
+			statusCode[200] = "200 OK";
+			statusCode[201] = "201 Created";
+			statusCode[204] = "204 No Content";
+			statusCode[400] = "400 Bad Request";
+			statusCode[404] = "404 Not Found";
+			statusCode[405] = "405 Method Not Allowed";
+			statusCode[413] = "413 Payload Too Large";
+			statusCode[500] = "500 Internal Server Error";
+			statusCode[501] = "501 Not Implemented";
 
 			interpreter[".py"] = "/Users/hyoghurt/.brew/bin/python3";
 			interpreter[".php"] = "/usr/bin/php";
 			interpreter[".perl"] = "/usr/bin/perl";
+			interpreter[".rb"] = "/usr/bin/ruby";
+			interpreter[".rbw"] = "/usr/bin/ruby";
 			interpreter[".sh"] = "/bin/sh";
 		}
 		Webserver(const Webserver& oth) { *this = oth; }
@@ -406,7 +408,6 @@ class	Webserver
 			std::cout << client.response << std::endl;
 
 			writeSocket(client);
-			client.cgi_f = 0;
 			//exit(0);
 		}
 
@@ -532,7 +533,7 @@ class	Webserver
 			found = client.path_file.find('?');
 			if (std::string::npos != found)
 			{
-				client.envCgi["QUERY_STRING"] = "\"" + client.path_file.substr(found + 1) + "\"";
+				client.envCgi["QUERY_STRING"] = client.path_file.substr(found + 1);
 				client.path_file.erase(found);
 			}
 

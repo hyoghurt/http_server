@@ -1,5 +1,5 @@
-#ifndef ADD_FUNCT_HPP
-# define ADD_FUNCT_HPP
+#ifndef ADD_FUNC_HPP
+# define ADD_FUNC_HPP
 
 # include <iostream>
 # include <cerrno>
