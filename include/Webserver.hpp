@@ -3,110 +3,102 @@
 
 # define TIME_KEEP_ALIVE 5
 
-//#include <sys/time.h>
-//#include <cstring>
-//#include <unistd.h>
-//#include <fcntl.h>
-//#include <sys/un.h>
-//#include <sstream>
-//#include <fstream>
-//#include <ctime>
-
 # include <iostream>
 # include <vector>
 # include <fstream> //open, ifstream
-# include "Server.hpp"
-# include "Client.hpp"
 # include <stdlib.h> //atoi
 # include <dirent.h> //opendir
 # include <sys/stat.h> //stat or <sys/types.h> <unistd.h>
 
+# include "Server.hpp"
+# include "Client.hpp"
+
+/*
+ * если не .py .sh то ошибка в конфиг файле
+ *
+ *
+ *
+ *
+ * location .py
+ *		root				cgi-bin
+ *		index				index.py
+ *		autoindex			false
+ *		redirect			127.0.0.1:6000
+ *		access_methods		GET, POST
+ *
+ * location /dowloads
+ *		root				www/dowloads
+ *		index				index.html
+ *		autoindex			true
+ *		redirect			127
+ *		access_methods		GET
+ *
+ *
+ * в начале Content-Type: text/plain
+ *
+ * если скачать то Content-Type: application/octet-stream
+ *
+ * если .html то Content-Type: text/html
+ * если .css то Content-Type: text/css
+ * если .csv то Content-Type: text/csv
+ * если .xml то Content-Type: text/xml
+ *
+ * если .png то Content-Type: image/png
+ * если .jpeg то Content-Type: image/jpeg
+ *
+ *
+ * check write and read -1 and 0
+ * использовать server_name
+ * написат redirect
+ * подисать cgi post
+ * подисать cgi окружение
+ * написать signal для выхода из программы
+ * запустить tester
+ * запустить siege
+ * content-type: png, html
+ *
+ * раширение .cgi прочесть файл и найти интерпритатор
+ * корректировка парсера полученного хедера (пробелы и перенос строки)
+ *
+ *
+ * curl --resolve example.com:80:127.0.0.1 http://example.com/
+ * curl -X POST -H "Content-Type: plain/text" --data "BODY IS HERE write something shorter or longer than body limit"
+ * in the configuration try to setup the same port multiple times. it should not work
+*/
+
 class	Webserver
 {
 	public:
-		Webserver()
-		{
-			statusCode[200] = "200 OK";
-			statusCode[201] = "201 Created";
-			statusCode[204] = "204 No Content";
-			statusCode[400] = "400 Bad Request";
-			statusCode[404] = "404 Not Found";
-			statusCode[405] = "405 Method Not Allowed";
-			statusCode[413] = "413 Payload Too Large";
-			statusCode[500] = "500 Internal Server Error";
-			statusCode[501] = "501 Not Implemented";
 
-			interpreter[".py"] = "/Users/hyoghurt/.brew/bin/python3";
-			interpreter[".php"] = "/usr/bin/php";
-			interpreter[".perl"] = "/usr/bin/perl";
-			interpreter[".rb"] = "/usr/bin/ruby";
-			interpreter[".rbw"] = "/usr/bin/ruby";
-			interpreter[".sh"] = "/bin/sh";
-		}
+//CONSTRUCTOR__________________________________________________________________
+		Webserver()						{ find_interpreter(); }
+//COPY_________________________________________________________________________
 		Webserver(const Webserver& oth) { *this = oth; }
+//DESTRUCTOR___________________________________________________________________
 		~Webserver()
 		{
 			std::vector<int>::iterator	it;
 
 			for (it = listenSocket.begin(); it != listenSocket.end(); ++it)
 			{
-				std::cout << "Webserver: Close socket listen: " << *it << std::endl;
+				print_info("Webserver: Close socket listen: "
+						+ std::to_string(*it));
 				close (*it);
 			}
-
 		}
-
+//OPERATOR=____________________________________________________________________
 		Webserver&	operator= (const Webserver& oth)
 		{
 			this->server = oth.server;
 			this->client = oth.client;
 			this->listenSocket = oth.listenSocket;
-			this->statusCode = oth.statusCode;
+			this->interpreter = oth.interpreter;
 			return *this;
 		}
-
-		/*
-		std::vector<std::string>	split_string(std::string s, const std::string& delimiter)
-		{
-			std::vector<std::string>	result;
-			std::string					token;
-			size_t						pos = 0;
-
-			while ((pos = s.find(delimiter)) != std::string::npos)
-			{
-			    token = s.substr(0, pos);
-				result.push_back(token);
-			    s.erase(0, pos + delimiter.length());
-			}
-			result.push_back(s);
-			return (result);
-		}
-
-		void	inter(void)
-		{
-			std::string							path_;
-			std::vector<std::string>			token;
-			std::vector<std::string>::iterator	it;
-
-			path_ = getenv("PATH");
-			token = split_string(path_, ":");
-
-			for (it = token.begin(); it != token.end(); ++it)
-				std::cout << (*it) << std::endl;
-
-			//exit(0);
-		}
-		*/
-
-		//debug_______________________________________________________
-		void		makeServer(Server& serv)
-		{ server.push_back(serv); }
-		//____________________________________________________________
-
-		int			createSocketListen(void)
+//CREATE_LISTEN_SOCKET_________________________________________________________
+		int			createSocketListen ()
 		{
 			std::vector<Server>::iterator	it;
-			std::vector<int>::iterator		it_int;
 			std::string						ip;
 			std::string						port;
 			int								socketListen;
@@ -126,25 +118,23 @@ class	Webserver
 			}
 			return (0);
 		}
-
-		int			checkIpAddressAndPort(const std::string& ip, const std::string& port, 
-				std::vector<Server>::iterator it_end)
+//CREATE_LISTEN_SOCKET_________________________________________________________
+		int		checkIpAddressAndPort (const std::string& ip,
+				const std::string& port, std::vector<Server>::iterator it_end)
 		{
 			std::vector<Server>::iterator	it;
 
 			for (it = server.begin(); it != it_end; ++it)
-			{
 				if ((*it).getIpAddress() == ip and (*it).getPort() == port)
 					return (-1);
-			}
 			return (0);
 		}
-
-		int			SocketListen(const std::string& ip, const std::string& port)
+//CREATE_LISTEN_SOCKET_________________________________________________________
+		int		SocketListen(const std::string& ip, const std::string& port)
 		{
 			int	socketListen;
 
-			//создание сокета ___________________________________________________
+			//создание сокета__________________________________________________
 			socketListen = socket(AF_INET, SOCK_STREAM, 0);
 			if (socketListen == -1)
 			{
@@ -152,7 +142,7 @@ class	Webserver
 				return (-1);
 			}
 
-			//перевод сокета в неблокирующий режим____________________________
+			//перевод сокета в неблокирующий режим_____________________________
 			int	flags = fcntl(socketListen, F_GETFL);
 			if (-1 == fcntl(socketListen, F_SETFL, flags | O_NONBLOCK))
 			{
@@ -162,25 +152,26 @@ class	Webserver
 
 			//установили флаг, для предотвращения залипаниz TCP порта__________
 			int	opt = 1;
-			if (-1 == setsockopt(socketListen, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
+			if (-1 == setsockopt(socketListen, SOL_SOCKET,
+						SO_REUSEADDR, &opt, sizeof(opt)))
 			{
 				print_error("setsockopt");
 				return (-1);
 			}
 
-			//сопостовление созданному сокету конкретного адреса________________
+			//сопостовление созданному сокету конкретного адреса_______________
 			struct sockaddr_in  addr;
 
 			addr.sin_family = AF_INET;
 			addr.sin_port = htons(atoi(port.c_str()));
 			addr.sin_addr.s_addr = inet_addr(ip.c_str());
-			if (-1 == bind(socketListen, (struct sockaddr*) &addr, sizeof(addr)))
+			if (-1 == bind(socketListen,(struct sockaddr*)&addr, sizeof(addr)))
 			{
 				print_error("bind");
 				return (-1);
 			}
 
-			//переводим сокет в слушаюший режим_________________________________
+			//переводим сокет в слушаюший режим________________________________
 			if (-1 == listen(socketListen, 5))
 			{
 				print_error("listen");
@@ -188,115 +179,97 @@ class	Webserver
 			}
 
 			//печать на консоль информацию______________________________________
-			std::cout << PINK << "________START SERVER_:" << socketListen << " ";
+			std::cout << PINK << "\n_____START SERVER_:" << socketListen << " ";
 			std::cout << ip << ":" << port << "    " << NO_C << '\n';
 
 			return (socketListen);
 		}
 
-		int			start(void)
+//START_WEBSERVER______________________________________________________________
+		int		start()
 		{
 			fd_set		readfds;
 			fd_set		writefds;
 			int			max_d;
-			int			num = 0;
+			int			num(0);
 
-			//мультиплексирование ввода-вывода select() poll() kqueue()
+			//мультиплексирование ввода-вывода select() poll() kqueue()________
 			while (1)
 			{
-				//создаем множество___________________________________________
+				//создаем множество____________________________________________
 				createFdSet(max_d, readfds, writefds);
-
-				//создаем выборку файловых дескрипторов_______________________
+				//создаем выборку файловых дескрипторов________________________
 				if (1 > select(max_d + 1, &readfds, &writefds, NULL, NULL))
 				{
 					print_error("select");
-					if (num == 20)
+					if (num++ == 20)
 						return (-1);
-					++num;
 					usleep(500000);
 					continue ;
 				}
 				num = 0;
-
-				//запрос от нового клиента____________________________________
+				//запрос от нового клиента_____________________________________
 				addNewClient(readfds);
-
-				//данные клиента______________________________________________
+				//данные клиента_______________________________________________
 				processingClient(readfds, writefds);
 			}
 			return (0);
 		}
-		
+//CREATE_FD_SET________________________________________________________________
 		void	createFdSet(int &max_d, fd_set &readfds, fd_set &writefds)
 		{
-			std::vector<int>::iterator		it_ls;
-			std::vector<Client>::iterator	it_client;
+			std::vector<int>::iterator		ils;
+			std::vector<Client>::iterator	icl;
 
-			FD_ZERO(&readfds); //очищаем множество
-			FD_ZERO(&writefds); //очищаем множество
+			FD_ZERO(&readfds);	//очищаем множество
+			FD_ZERO(&writefds);	//очищаем множество
 			max_d = 0;
 
-			//добавляем дескриптор в множество
-			for (it_ls = listenSocket.begin(); it_ls != listenSocket.end(); ++it_ls)
+			//добавляем дескриптор в множество_________________________________
+			for (ils = listenSocket.begin(); ils != listenSocket.end(); ++ils)
 			{
-				FD_SET((*it_ls), &readfds);
-				max_d = std::max((*it_ls), max_d);
+				FD_SET((*ils), &readfds);
+				max_d = std::max((*ils), max_d);
 			}
 
-			for (it_client = client.begin(); it_client != client.end(); ++it_client)
+			for (icl = client.begin(); icl != client.end(); ++icl)
 			{
-				FD_SET((*it_client).getSocket(), &readfds);
-				max_d = std::max((*it_client).getSocket(), max_d);
+				FD_SET((*icl).getSocket(), &readfds);
+				max_d = std::max((*icl).getSocket(), max_d);
 			}
 		}
-
+//ADD_NEW_CLIENT_______________________________________________________________
 		void	addNewClient(fd_set &readfds)
 		{
-			std::vector<int>::iterator		it_ls;
-			int								socket_listen;
-			int								socket_client;
-			struct sockaddr_in				addr_cl;
-			socklen_t						addr_len;
+			std::vector<int>::iterator		ils;
+			int								scl;
+			struct sockaddr_in				acl;
+			socklen_t						aln;
 
-			for (it_ls = listenSocket.begin(); it_ls != listenSocket.end(); ++it_ls)
+			for (ils = listenSocket.begin(); ils != listenSocket.end(); ++ils)
 			{
-				socket_listen = (*it_ls);
-				if (FD_ISSET(socket_listen, &readfds))
+				if (FD_ISSET((*ils), &readfds))
 				{
-					//получаем сокет через который будет осуществлятся связь с клиентом
-					socket_client = accept(socket_listen, (struct sockaddr*) &addr_cl, &addr_len);
+					//получаем сокет для связи с клиентом______________________
+					scl = accept((*ils), (struct sockaddr*) &acl, &aln);
 
-					if (socket_client == -1)
+					if (scl == -1)
 						print_error("accept");
 					else
 					{
-						fcntl(socket_client, F_SETFL, O_NONBLOCK);
-						print_connect_info(socket_listen, socket_client, addr_cl);
-						client.push_back(Client(socket_client, inet_ntoa(addr_cl.sin_addr)));
+						fcntl(scl, F_SETFL, O_NONBLOCK);
+						print_connect_info((*ils), scl, acl);
+						client.push_back(Client(scl, inet_ntoa(acl.sin_addr)));
 					}
 				}
 			}
 		}
-
-		int		checkCloseClient(Client& client)
-		{
-			time_t		get_time;
-
-			if (client.responseHeader["Connection"] == "Connection: close\r\n")
-				return (1);
-
-			time(&get_time);
-			if (get_time - client.timeStart > TIME_KEEP_ALIVE)
-				return (1);
-
-			return (0);
-		}
-
+//PROCESSING_CLIENT____________________________________________________________
 		void	processingClient(fd_set &readfds, fd_set &writefds)
 		{
 			std::vector<Client>::iterator	it_client;
 			int								socket_client;
+			int								bytes;
 
 			it_client = client.begin();
 
@@ -304,13 +277,16 @@ class	Webserver
 			{
 				socket_client = (*it_client).getSocket();
 
+				//данные_для_чтения____________________________________________
 				if (FD_ISSET(socket_client, &readfds))
-					readSocket(*it_client);
+					bytes = readSocket(*it_client);
 
+				//данные_для_отправки__________________________________________
 				else if (FD_ISSET(socket_client, &writefds))
-					writeSocket(*it_client);
+					bytes = writeSocket(*it_client);
 
-				if (checkCloseClient(*it_client))
+				//закрытие_клиента_____________________________________________
+				if (bytes == -1 || checkCloseClient(*it_client))
 				{
 					(*it_client).debug_info("close socket");
 
@@ -318,16 +294,18 @@ class	Webserver
 					it_client = client.erase(it_client);
 					continue;
 				}
+
 				++it_client;
 			}
 		}
-
-		void	readSocket(Client& client)
+//READ_SOCKET__________________________________________________________________
+		int		readSocket(Client& client)
 		{
-			int				bytes, found, found_2;
+			int				f, f2;
 			std::string		len;
 
-			bytes = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
+			//чтение_данных_от_клиента_________________________________________
+			int	bytes = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
 
 			if (bytes > 0)
 			{
@@ -342,45 +320,51 @@ class	Webserver
 				{
 					if (client.request.find("\r\n\r\n") != std::string::npos)
 					{
-						found = client.request.find("Content-Length:");
-						if (found != std::string::npos)
+						f = client.request.find("Content-Length:");
+						if (f != std::string::npos)
 						{
-							found_2 = client.request.find("\r\n", found);
-							len = client.request.substr(found + 16, found_2 - (found + 16));
+							f2 = client.request.find("\r\n", f);
+							len = client.request.substr(f + 16, f2 - (f + 16));
 							client.readByte = atoi(len.c_str());
 						}
 						client.readByte += client.request.find("\r\n\r\n") + 4;
 					}
 				}
+				//получили_данные_полностью____________________________________
 				if (client.request.size() == client.readByte)
 				{
 					std::cout << client.request << std::endl;
 
 					client.readByte = 0;
+					//создание_ответа__________________________________________
 					create_response(client);
+					//закрытие_сокета_чтения___________________________________
 					shutdown(client.socket, 0);
 				}
 			}
+			return (bytes);
 		}
-
-		void	writeSocket(Client& client)
+//WRITE_SOCKET_________________________________________________________________
+		int		writeSocket(Client& client)
 		{
-			int		n;
+			//отправка_данных_клиенту__________________________________________
+			int	bytes = send(client.socket, client.response.c_str(),
+					client.response.size(), 0);
 
-			n = send(client.socket, client.response.c_str(), client.response.size(), 0);
-			if (-1 == n)
-				print_error("Error send");
-			else
+			if (bytes > 0)
 			{
-				client.response.erase(0, n);
+				client.setTimeStart();
+				client.response.erase(0, bytes);
+				client.debug_info("write bytes: " + std::to_string(bytes)
+					+ " ost bytes:" + std::to_string(client.response.size()));
 
-				client.debug_info("write bytes: " + std::to_string(n) + " ost bytes:" + std::to_string(client.response.size()));
-
-				if (client.response.size() == 0)
+				//закрытие_сокета_отправкиi____________________________________
+				if (client.response.empty())
 					shutdown(client.socket, 1);
 			}
+			return (bytes);
 		}
-
+//RESPONSE_____________________________________________________________________
 		void	create_response(Client& client)
 		{
 			print_debug("F create response");
@@ -388,54 +372,63 @@ class	Webserver
 			int				status_code;
 			std::string		path_file;
 
+			//парсер_запроса_клиента___________________________________________
 			client.create_json_request();
 			client.request.clear();
 
+			//выполнение_запроса_______________________________________________
 			status_code = processing_request(client);
-			client.responseHeader["Status"] = statusCode[status_code];
 
+			//формирование_итога_для_отправки__________________________________
+			client.responseHeader["Status"] = get_status_code(status_code);
 			if (200 != status_code)
 			{
-				if (NULL != client.server)
+				if (client.server != nullptr)
 				{
 					path_file = client.server->errorPage[status_code];
 					if (!path_file.empty())
 						client.open_file(path_file);
 				}
 			}
-
 			client.response_total();
+
 			std::cout << client.response << std::endl;
 
+			//отправка_данных_клиенту__________________________________________
 			writeSocket(client);
-			//exit(0);
 		}
-
-		//старт сздания ответа_______________________________________________________
+//RESPONSE_____________________________________________________________________
 		int		processing_request(Client& client)
 		{
 			std::map<std::string, std::string>::iterator	it;
 
+			//привязка_к_config_server_________________________________________
 			client.server = find_server(client);
 			if (client.server == 0)
 				return (400);
 
+			//проверка_размера_тела_запроса____________________________________
 			if (client.check_413())
 				return (413);
 
+			//привязка_к_config_location_______________________________________
 			client.location = find_location(client);
 			if (client.location == 0)
 				return (400);
 
+			//проверка_метода_(GET,POST,DELETE)________________________________
 			if (client.check_501())
 				return (501);
 
+			//проверка_метода_допустимых_в_config______________________________
 			if (client.check_405())
 				return (405);
 
+			//выполнение_метода_DELETE_________________________________________
 			if (client.json_request["method"] == "DELETE")
 				return (client.deleteFile());
 
+			//выполнение_CGI___________________________________________________
 			for (it = interpreter.begin(); it != interpreter.end(); ++it)
 			{
 				if (client.path_file.find((*it).first) != std::string::npos)
@@ -445,12 +438,14 @@ class	Webserver
 				}
 			}
 
+			//выполнение_метода_GET____________________________________________
 			if (client.json_request["method"] == "GET")
 				return (client.get_run());
 
+			//выполнение_метода_POST___________________________________________
 			return (client.post_run());
 		}
-
+//CONFIG_SERVER________________________________________________________________
 		Server*		find_server(Client& client)
 		{
 			print_debug("F find server");
@@ -473,13 +468,12 @@ class	Webserver
 			}
 
 			for (it = server.begin(); it != server.end(); ++it)
-			{
 				if ((*it).ipAddress == ip && (*it).port == port)
 					return (&(*it));
-			}
+
 			return (0);
 		}
-
+//CONFIG_LOCATION______________________________________________________________
 		Location*	find_location(Client &client)
 		{
 			std::map<std::string, Location>::iterator	it;
@@ -487,8 +481,7 @@ class	Webserver
 			int											found;
 
 			request_target = client.json_request["request_target"];
-
-			print_debug("F find loacation for target: [" + request_target + "]");
+			print_debug("F find loacation for target: ["+request_target+"]");
 
 			found = request_target.find("?");
 			if (std::string::npos != found)
@@ -517,13 +510,14 @@ class	Webserver
 			}
 			return (0);
 		}
-
-		void	parser_url(std::map<std::string, Location>::iterator it, Client& client)
+//PARSER_URL___________________________________________________________________
+		void	parser_url
+			(std::map<std::string, Location>::iterator it, Client& client)
 		{
-			print_debug("F create client.path_file (location: [" + (*it).first + "])");
+			print_debug("F create cl.path_file (location: ["+(*it).first+"])");
 
-			int				found;
-			std::string		request_target = client.json_request["request_target"];
+			int			found;
+			std::string	request_target = client.json_request["request_target"];
 
 			if ((*it).first != "/")
 				request_target.erase(0, (*it).first.size());
@@ -558,31 +552,112 @@ class	Webserver
 			}
 			client.debug_info("client.path_file:" + client.path_file);
 		}
+//FIND_INTERPRETER_____________________________________________________________
+		void	find_interpreter()
+		{
+			std::map<std::string, std::string>				tmp;
+			std::map<std::string, std::string>::iterator	it;
 
-		void	debugPrintMessage(const std::string& mes)
-		{ std::cout << YELLOW << get_new_time() << " " << mes << RESET << '\n'; }
+			tmp[".py"]		= "python3";
+			tmp[".php"]		= "php";
+			tmp[".perl"]	= "perl";
+			tmp[".rb"]		= "ruby";
+			tmp[".rbw"]		= "ruby";
+			tmp[".sh"]		= "sh";
 
-		void	debugPrintColorClient(const std::string& col, const int& socket)
-		{ std::cout << col << get_new_time() << " " << "cl:" << socket << RESET; }
+			for (it = tmp.begin(); it != tmp.end(); ++it)
+				tmp[(*it).first] = absolutePathOfExec((*it).second);
+
+			for (it = tmp.begin(); it != tmp.end(); ++it)
+				if (!(*it).second.empty())
+					interpreter.insert(*it);
+
+			std::cout <<  YELLOW << "\nCGI: interpreter     found: " << RESET;
+			for (it = interpreter.begin(); it != interpreter.end(); ++it)
+				std::cout << " | " << (*it).first;
+			std::cout << '\n';
+
+			std::cout << YELLOW << "CGI: interpreter not found: " << RESET;
+			for (it = tmp.begin(); it != tmp.end(); ++it)
+				if ((*it).second.empty())
+					std::cout << " | " << (*it).first;
+			std::cout << '\n';
+		}
+//FIND_INTERPRETER_____________________________________________________________
+		std::string		absolutePathOfExec(const std::string& execName)
+		{
+			std::string		absolutePath;
+			std::string		token;
+			std::string		path = getenv("PATH");
+			size_t			pos = 0;
+			struct stat		st;
+		
+			if (path.empty())
+				return ("");
+		
+			while ((pos = path.find(':')) != std::string::npos)
+			{
+				token = path.substr(0, pos);
+				absolutePath = (token.append("/") + execName);
+		
+				if (stat(absolutePath.c_str(), &st) == 0)
+					return absolutePath;
+		
+				path.erase(0, pos + 1);
+			}
+			return ("");
+		}
+//CHECK_CLOSE_CLIENT___________________________________________________________
+		int		checkCloseClient(Client& client)
+		{
+			time_t		get_time;
+
+			if (client.responseHeader["Connection"] == "close")
+				return (1);
+
+			time(&get_time);
+			if (get_time - client.timeStart > TIME_KEEP_ALIVE)
+				return (1);
+
+			return (0);
+		}
+//ADD__________________________________________________________________________
+		std::string	get_status_code(const int& code)
+		{
+			switch (code)
+			{
+				case 200:
+					return ("200 OK");
+				case 201:
+					return ("201 Created");
+				case 204:
+					return ("204 No Content");
+				case 301:
+					return ("301 Moved Permanently");
+				case 400:
+					return ("400 Bad Request");
+				case 404:
+					return ("404 Not Found");
+				case 405:
+					return ("405 Method Not Allowed");
+				case 413:
+					return ("413 Payload Too Large");
+				case 500:
+					return ("500 Internal Server Error");
+				case 501:
+					return ("501 Not Implemented");
+				default:
+					return ("Not found");
+			}
+		}
+//DEBUG________________________________________________________________________
+		void		makeServer(Server& serv) { server.push_back(serv); }
 
 	public:
 		std::vector<Server>					server;
 		std::vector<Client>					client;
 		std::vector<int>					listenSocket;
-		std::map<int, std::string>			statusCode;
 		std::map<std::string, std::string>	interpreter;
 };
-
-/*
-void			print_error(const std::string& str);
-int				create_listen_socket(void);
-std::string		ret_str_open(const std::string& file);
-void			debug_pring_request(const int& fd_client, const std::string& str);
-std::string		get_new_time(void);
-void			print_connect_info(int fd_cl, struct sockaddr_in addr_cl);
-void			read_cl_socket(Cl_socket cl_socket);
-void			create_fd_set(int &max_d, int &ls, std::vector<Cl_socket> &store, fd_set &readfds);
-void			add_fd_store(int &ls, std::vector<Cl_socket> &store);
-*/
 
 #endif

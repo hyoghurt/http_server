@@ -445,7 +445,8 @@ class	Client
 			int												found;
 
 			found = body.find("\r\n\r\n");
-
+			if (found == std::string::npos)
+				found = body.find("\n\n");
 			if (found == std::string::npos)
 				return;
 
