@@ -94,6 +94,6 @@ def client_post(ip, port, file_name):
 my_serv = "127.0.0.1"
 port_m = 9000
 
-client_post(my_serv, port_m, "/post/test.txt")
-#client_get(my_serv, port_m, "/cgi-bin/hello.php/with/additional/path?and=a&query=string")
+#client_post(my_serv, port_m, "/post/test.txt")
+client_get(my_serv, port_m, "/cgi-bin/hello.py/with/additional/path?and=a&query=string")
 #client_delete(my_serv, port_m, "/delete/4")

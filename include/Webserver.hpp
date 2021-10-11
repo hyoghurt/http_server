@@ -1,7 +1,7 @@
 #ifndef WEBSERVER_HPP
 # define WEBSERVER_HPP
 
-# define TIME_KEEP_ALIVE 5
+//# define TIME_KEEP_ALIVE 
 
 # include <iostream>
 # include <vector>
@@ -23,39 +23,36 @@
  *		root				cgi-bin
  *		index				index.py
  *		autoindex			false
- *		redirect			127.0.0.1:6000
+ *		return 302			127.0.0.1:6000
  *		access_methods		GET, POST
  *
  * location /dowloads
  *		root				www/dowloads
  *		index				index.html
  *		autoindex			true
- *		redirect			127
  *		access_methods		GET
+ *		uplaad_pass			on
+ *		cgi_pass			python3
  *
  *
- * в начале Content-Type: text/plain
- *
- * если скачать то Content-Type: application/octet-stream
- *
- * если .html то Content-Type: text/html
- * если .css то Content-Type: text/css
- * если .csv то Content-Type: text/csv
- * если .xml то Content-Type: text/xml
- *
- * если .png то Content-Type: image/png
- * если .jpeg то Content-Type: image/jpeg
  *
  *
- * check write and read -1 and 0
+ *
+ *
+ * +	check write and read -1 and 0
+ * +	переписать автоиндекс
+ * +	переписать нахождение локатион
+ * +	content-type: png, html
+ *
+ * скачать то Content-Type: application/octet-stream
  * использовать server_name
  * написат redirect
+ *
  * подисать cgi post
  * подисать cgi окружение
  * написать signal для выхода из программы
  * запустить tester
  * запустить siege
- * content-type: png, html
  *
  * раширение .cgi прочесть файл и найти интерпритатор
  * корректировка парсера полученного хедера (пробелы и перенос строки)
@@ -213,6 +210,7 @@ class	Webserver
 				//данные клиента_______________________________________________
 				processingClient(readfds, writefds);
 			}
+			std::cout << "end loop" << std::endl;
 			return (0);
 		}
 //CREATE_FD_SET________________________________________________________________
@@ -235,6 +233,7 @@ class	Webserver
 			for (icl = client.begin(); icl != client.end(); ++icl)
 			{
 				FD_SET((*icl).getSocket(), &readfds);
+				FD_SET((*icl).getSocket(), &writefds);
 				max_d = std::max((*icl).getSocket(), max_d);
 			}
 		}
@@ -269,7 +268,7 @@ class	Webserver
 		{
 			std::vector<Client>::iterator	it_client;
 			int								socket_client;
-			int								bytes;
+			int								bytes(0);
 
 			it_client = client.begin();
 
@@ -282,7 +281,7 @@ class	Webserver
 					bytes = readSocket(*it_client);
 
 				//данные_для_отправки__________________________________________
-				else if (FD_ISSET(socket_client, &writefds))
+				if (FD_ISSET(socket_client, &writefds))
 					bytes = writeSocket(*it_client);
 
 				//закрытие_клиента_____________________________________________
@@ -294,6 +293,7 @@ class	Webserver
 					it_client = client.erase(it_client);
 					continue;
 				}
+				bytes = 0;
 
 				++it_client;
 			}
@@ -339,7 +339,7 @@ class	Webserver
 					//создание_ответа__________________________________________
 					create_response(client);
 					//закрытие_сокета_чтения___________________________________
-					shutdown(client.socket, 0);
+					//shutdown(client.socket, 0);
 				}
 			}
 			return (bytes);
@@ -359,8 +359,10 @@ class	Webserver
 					+ " ost bytes:" + std::to_string(client.response.size()));
 
 				//закрытие_сокета_отправкиi____________________________________
+				/*
 				if (client.response.empty())
 					shutdown(client.socket, 1);
+					*/
 			}
 			return (bytes);
 		}
@@ -392,7 +394,8 @@ class	Webserver
 			}
 			client.response_total();
 
-			std::cout << client.response << std::endl;
+			std::cout << client.header << std::endl;
+			//std::cout << client.response << std::endl;
 
 			//отправка_данных_клиенту__________________________________________
 			writeSocket(client);
@@ -411,8 +414,17 @@ class	Webserver
 			if (client.check_413())
 				return (413);
 
+			//вытащить_переменные_для_cgi______________________________________
+			client.find_query_string_path_info();
+
 			//привязка_к_config_location_______________________________________
-			client.location = find_location(client);
+			client.location = nullptr;
+			find_location_filename_extension(client);
+			if (client.location == nullptr)
+			{
+				find_location_directory(client);
+				find_location_filename_extension(client);
+			}
 			if (client.location == 0)
 				return (400);
 
@@ -474,82 +486,85 @@ class	Webserver
 			return (0);
 		}
 //CONFIG_LOCATION______________________________________________________________
-		Location*	find_location(Client &client)
+		void	find_location_directory(Client &client)
 		{
 			std::map<std::string, Location>::iterator	it;
 			std::string									request_target;
 			int											found;
 
-			request_target = client.json_request["request_target"];
+			request_target = client.path_file;
 			print_debug("F find loacation for target: ["+request_target+"]");
-
-			found = request_target.find("?");
-			if (std::string::npos != found)
-				request_target.erase(found);
 
 			while (request_target.length() != 0)
 			{
 				it = client.server->location.find(request_target);
 				if (it != client.server->location.end())
 				{
-					parser_url(it, client);
-					return (&(*it).second);
+					client.location = &(*it).second;
+					add_root_and_index((*it).first, client);
+					return ;
 				}
 
 				if (request_target == "/")
-					return (0);
+					return ;
 
 				found = request_target.find_last_of("/");
 				if (std::string::npos == found)
-					return (0);
+					return ;
 
 				if (found == 0)
 					found = 1;
 
 				request_target.erase(found);
 			}
-			return (0);
 		}
-//PARSER_URL___________________________________________________________________
-		void	parser_url
-			(std::map<std::string, Location>::iterator it, Client& client)
+//CONFIG_LOCATION______________________________________________________________
+		void	find_location_filename_extension(Client& client)
 		{
-			print_debug("F create cl.path_file (location: ["+(*it).first+"])");
+			std::map<std::string, Location>::iterator	it;
+			std::string									request_target;
+			int											found;
 
-			int			found;
-			std::string	request_target = client.json_request["request_target"];
-
-			if ((*it).first != "/")
-				request_target.erase(0, (*it).first.size());
-
-			client.path_file = (*it).second.root + request_target;
-
-			found = client.path_file.find('?');
-			if (std::string::npos != found)
+			found = client.path_file.find_last_of('.');
+			if (found != std::string::npos)
 			{
-				client.envCgi["QUERY_STRING"] = client.path_file.substr(found + 1);
-				client.path_file.erase(found);
-			}
+				request_target = client.path_file.substr(found);
+				it = client.server->location.find(request_target);
 
-			found = client.path_file.find('.');
-			if (std::string::npos != found)
-			{
-				found = client.path_file.find('/', found);
-				if (std::string::npos != found)
+				if (it != client.server->location.end())
 				{
-					client.envCgi["PATH_INFO"] = client.path_file.substr(found);
-					client.path_file.erase(found);
+					client.location = &(*it).second;
+					add_root_and_index((*it).first, client);
 				}
 			}
-			else
+		}
+//CONFIG_LOCATION______________________________________________________________
+		void	add_root_and_index(const std::string& role, Client& client)
+		{
+			print_debug("F add root and index (location: ["+role+"])");
+			std::string	tmp_path_file = client.path_file;
+			size_t		size;
+			int			dir;
+
+			if (role != "/" && role.find('.') == std::string::npos)
+				tmp_path_file.erase(0, role.size());
+
+			client.path_file = client.location->root + tmp_path_file;
+
+			size = client.path_file.size();
+			if (size == 0)
+				return ;
+			dir = check_dir_or_file(client.path_file);
+			if (dir == 1)
 			{
-				if (1 == client.check_dir_or_file(client.path_file))
-				{
-					if (client.path_file.find_last_of('/') != (client.path_file.size() - 1))
-						client.path_file += "/";
-					client.path_file += (*it).second.index;
-				}
+				if ('/' != client.path_file[size - 1])
+					client.path_file += "/";
+				if (check_dir_or_file(client.path_file + client.location->index) != 0)
+					if (client.json_request["method"] == "GET" && client.location->autoindex)
+						return ;
+				client.path_file += client.location->index;
 			}
+
 			client.debug_info("client.path_file:" + client.path_file);
 		}
 //FIND_INTERPRETER_____________________________________________________________

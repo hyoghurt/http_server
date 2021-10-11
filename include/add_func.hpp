@@ -7,6 +7,7 @@
 # include <sys/time.h>
 # include <arpa/inet.h> //sockaddr_in
 # include <cstring> //strerror
+# include <sys/stat.h> //stat or <sys/types.h> <unistd.h>
 
 # include "def_color.hpp"
 
@@ -16,5 +17,6 @@ void			print_error(const std::string& str);
 void			print_error_strerror(const std::string& str);
 void			print_connect_info(int socket_listen, int fd_cl, struct sockaddr_in addr_cl);
 std::string		get_new_time(void);
+int				check_dir_or_file(const std::string& name_file);
 
 #endif

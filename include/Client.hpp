@@ -2,7 +2,7 @@
 # define CLIENT_HPP
 
 # define BUF_SIZE 24
-# define TIME_KEEP_ALIVE 5
+# define TIME_KEEP_ALIVE 20
 
 # include <iostream>
 # include <dirent.h> //opendir
@@ -133,19 +133,10 @@ class	Client
 			DIR									*dp;
 			struct dirent						*ep;
 			std::vector<std::string>			name_file;
-			int									status_code;
-			int									found;
 
-			status_code = open_file(path_file);
-
-			if (location->autoindex && status_code == 404)
+			if (check_dir_or_file(path_file) == 1 && location->autoindex)
 			{
 				print_debug("F autoindex true");
-
-				found = path_file.find(location->index);
-				if (found == std::string::npos)
-					return (404);
-				path_file.erase(found);
 
 				dp = opendir(path_file.c_str());
 				if (nullptr != dp)
@@ -160,8 +151,9 @@ class	Client
 					autoindex_create_body(name_file);
 					return (200);
 				}
+				return (404);
 			}
-			return (status_code);
+			return (open_file(path_file));
 		}
 //GET__________________________________________________________________________
 		int		open_file(const std::string& str)
@@ -191,6 +183,7 @@ class	Client
 				catch (std::bad_alloc& ba)
 				{
 					print_error("open_file: bad_alloc");
+					is.close();
 					return (500);
 				}
 
@@ -201,6 +194,7 @@ class	Client
 				if (is)
 				{
 					body.assign(buffer, length);
+					responseHeader_content_type(str);
 					debug_info("all characters read successfully");
 				}
 				else
@@ -217,6 +211,31 @@ class	Client
 				status_code = 404;
 
 			return (status_code);
+		}
+
+		void		responseHeader_content_type(const std::string& str)
+		{
+			size_t		found;
+
+			found = str.find_last_of('.');
+			responseHeader["Content-Type"] = "text/plain";
+			if (found != std::string::npos)
+			{
+				if (str.substr(found) == ".html")
+					responseHeader["Content-Type"] = "text/html";
+				else if (str.substr(found) == ".css")
+					responseHeader["Content-Type"] = "text/css";
+				else if (str.substr(found) == ".csv")
+					responseHeader["Content-Type"] = "text/csv";
+				else if (str.substr(found) == ".xml")
+					responseHeader["Content-Type"] = "text/xml";
+				else if (str.substr(found) == ".png")
+					responseHeader["Content-Type"] = "image/png";
+				else if (str.substr(found) == ".jpeg")
+					responseHeader["Content-Type"] = "image/jpeg";
+				else if (str.substr(found) == ".gif")
+					responseHeader["Content-Type"] = "image/gif";
+			}
 		}
 //POST_________________________________________________________________________
 		int				post_run()
@@ -287,6 +306,8 @@ class	Client
 			body.append("</ul>\r\n");
 			body.append("<hr>\r\n");
 			body.append("</body></html>\r\n");
+
+			responseHeader["Content-Type"] = "text/html";
 		}
 
 //CGI__________________________________________________________________________
@@ -610,16 +631,27 @@ class	Client
 				std::cout << env[i++] << std::endl;
 		}
 
-		int		check_dir_or_file(const std::string& name_file)
+		void	find_query_string_path_info()
 		{
-			struct stat		sb;
+			path_file = json_request["request_target"];
 
-			stat((name_file).c_str(), &sb);
-			//if (-1 == stat("/www/", &sb))
-			//	return (-1);
-			if (S_ISDIR(sb.st_mode))
-				return (1);
-			return (0);
+			int	found = path_file.find('?');
+			if (std::string::npos != found)
+			{
+				envCgi["QUERY_STRING"] = path_file.substr(found + 1);
+				path_file.erase(found);
+			}
+
+			found = path_file.find_last_of('.');
+			if (std::string::npos != found)
+			{
+				found = path_file.find('/', found);
+				if (std::string::npos != found)
+				{
+					envCgi["PATH_INFO"] = path_file.substr(found);
+					path_file.erase(found);
+				}
+			}
 		}
 
 		std::pair<std::string, std::string>

@@ -12,7 +12,7 @@ void	print_error(const std::string& str)
 void	print_error_strerror(const std::string& str)
 { std::cerr << RED << "webserver: Error: " << str << ": " << strerror(errno) << RESET << '\n'; }
 
-void			print_connect_info(int socket_listen, int fd_cl, struct sockaddr_in addr_cl)
+void	print_connect_info(int socket_listen, int fd_cl, struct sockaddr_in addr_cl)
 {
 	std::cout << GREEN;
 	std::cout << "Connect: in socketListen " << socket_listen << " out ";
@@ -33,6 +33,17 @@ std::string		get_new_time()
 	strftime (buffer, sizeof buffer, "%x %X %Y", info);
 
 	return (buffer);
+}
+
+int		check_dir_or_file(const std::string& name_file)
+{
+	struct stat		sb;
+
+	if (-1 == stat((name_file).c_str(), &sb))
+		return (-1);
+	if (S_ISDIR(sb.st_mode))
+		return (1);
+	return (0);
 }
 /*
 void			debag_pring_request(const int& fd_client, const std::string& str)
