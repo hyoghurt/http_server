@@ -7,7 +7,18 @@
 class	Location
 {
 	public:
-		Location () {}
+		Location ()
+		{
+			root = "";
+			autoindex = false;
+			index = "index.html";
+			accessMethods.push_back("GET");
+			return_code = 0;
+			return_location = "";
+			cgiPass = "";
+			uploadPass = false;
+			dowloadPass = false;
+		}
 		~Location () {}
 		Location (const std::string& root, const bool autoindex,
 				const std::string& index,
@@ -24,6 +35,11 @@ class	Location
 		bool						autoindex;
 		std::string					index;
 		std::vector<std::string>	accessMethods;
+		int							return_code;
+		std::string					return_location;
+		std::string					cgiPass;
+		bool						uploadPass;
+		bool						dowloadPass;
 };
 
 #endif

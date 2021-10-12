@@ -14,51 +14,48 @@
 # include "Client.hpp"
 
 /*
- * если не .py .sh то ошибка в конфиг файле
- *
- *
- *
- *
- * location .py
- *		root				cgi-bin
- *		index				index.py
- *		autoindex			false
- *		return 302			127.0.0.1:6000
- *		access_methods		GET, POST
- *
- * location /dowloads
- *		root				www/dowloads
- *		index				index.html
- *		autoindex			true
- *		access_methods		GET
- *		uplaad_pass			on
- *		cgi_pass			python3
- *
- *
- *
- *
- *
- *
  * +	check write and read -1 and 0
  * +	переписать автоиндекс
  * +	переписать нахождение локатион
  * +	content-type: png, html
+ * +	скачать то Content-Type: application/octet-stream
+ * +	написат redirect
+ * +	использовать server_name
  *
- * скачать то Content-Type: application/octet-stream
- * использовать server_name
- * написат redirect
  *
- * подисать cgi post
  * подисать cgi окружение
+ * подисать cgi post
  * написать signal для выхода из программы
  * запустить tester
  * запустить siege
  *
+ * проверить автоиндекс / в конце
  * раширение .cgi прочесть файл и найти интерпритатор
  * корректировка парсера полученного хедера (пробелы и перенос строки)
  *
  *
- * curl --resolve example.com:80:127.0.0.1 http://example.com/
+ * _________CURL____________________________________________________________
+ * curl --response host:port:address http://host:port
+ *
+ * POST
+ * curl -d "text" http://127.0.0.1:9000/dowloads/file
+ *
+ * вывести только заголовок
+ * curl -I https://losst.ru
+ *
+ * вывести загаловок и тело
+ * curl -i https://losst.ru
+ *
+ * отправить метод
+ * curl -X GET
+ * curl -X POST -d @file.txt http://127.0.0.1:9000/dowloads/file
+ * curl -X POST -d "text" http://127.0.0.1:9000/dowloads/file
+ *
+ * отправить заголовок
+ * curl -I --header 'If-Modified-Since: Mon, 26 Dec 2016 18:13:12 GMT' https://losst.ru
+ *
+ *
+ * ________________________TEST_________________________________________________
  * curl -X POST -H "Content-Type: plain/text" --data "BODY IS HERE write something shorter or longer than body limit"
  * in the configuration try to setup the same port multiple times. it should not work
 */
@@ -276,13 +273,13 @@ class	Webserver
 			{
 				socket_client = (*it_client).getSocket();
 
-				//данные_для_чтения____________________________________________
-				if (FD_ISSET(socket_client, &readfds))
-					bytes = readSocket(*it_client);
-
 				//данные_для_отправки__________________________________________
 				if (FD_ISSET(socket_client, &writefds))
 					bytes = writeSocket(*it_client);
+
+				//данные_для_чтения____________________________________________
+				if (FD_ISSET(socket_client, &readfds))
+					bytes = readSocket(*it_client);
 
 				//закрытие_клиента_____________________________________________
 				if (bytes == -1 || checkCloseClient(*it_client))
@@ -418,15 +415,13 @@ class	Webserver
 			client.find_query_string_path_info();
 
 			//привязка_к_config_location_______________________________________
-			client.location = nullptr;
-			find_location_filename_extension(client);
-			if (client.location == nullptr)
-			{
-				find_location_directory(client);
-				find_location_filename_extension(client);
-			}
+			find_location(client);
 			if (client.location == 0)
 				return (400);
+
+			//редирект_________________________________________________________
+			if (client.check_redirect())
+				return (client.location->return_code);
 
 			//проверка_метода_(GET,POST,DELETE)________________________________
 			if (client.check_501())
@@ -440,15 +435,21 @@ class	Webserver
 			if (client.json_request["method"] == "DELETE")
 				return (client.deleteFile());
 
-			//выполнение_CGI___________________________________________________
-			for (it = interpreter.begin(); it != interpreter.end(); ++it)
+			//выполнение_загрузки______________________________________________
+			if (client.location->uploadPass)
+				return (client.get_run());
+
+			//выполнение_скачивания____________________________________________
+			if (client.location->dowloadPass)
 			{
-				if (client.path_file.find((*it).first) != std::string::npos)
-				{
-					client.interpreter = (*it).second;
-					return (client.cgi_run());
-				}
+				if (client.json_request["method"] == "GET")
+					return (client.get_run());
+				return (client.post_run());
 			}
+
+			//выполнение_CGI___________________________________________________
+			if (!client.location->cgiPass.empty())
+				return (client.cgi_run());
 
 			//выполнение_метода_GET____________________________________________
 			if (client.json_request["method"] == "GET")
@@ -464,29 +465,44 @@ class	Webserver
 
 			std::vector<Server>::iterator	it;
 			std::string						host;
-			std::string						ip;
 			std::string						port;
 			std::size_t						found;
-			std::size_t						size;
 
 			host = client.json_request["Host"];
 			found = host.find(":");
-			size = host.size();
 
 			if (found != std::string::npos)
 			{
-				ip = host.substr(0, found);
-				port = host.substr(found + 1, size - found);
+				port = host.substr(found + 1);
+				host.erase(found);
 			}
 
 			for (it = server.begin(); it != server.end(); ++it)
-				if ((*it).ipAddress == ip && (*it).port == port)
+				if ((*it).ipAddress == host && (*it).port == port)
+					return (&(*it));
+
+			for (it = server.begin(); it != server.end(); ++it)
+				if ((*it).serverName == host)
 					return (&(*it));
 
 			return (0);
 		}
 //CONFIG_LOCATION______________________________________________________________
-		void	find_location_directory(Client &client)
+		int		find_location(Client& client)
+		{
+			client.location = nullptr;
+			find_location_filename_extension(client);
+			if (client.location == nullptr)
+			{
+				find_location_directory(client);
+				find_location_filename_extension(client);
+			}
+
+			client.debug_info("client.path_file:" + client.path_file);
+			return (0);
+		}
+//CONFIG_LOCATION______________________________________________________________
+		int		find_location_directory(Client &client)
 		{
 			std::map<std::string, Location>::iterator	it;
 			std::string									request_target;
@@ -502,21 +518,22 @@ class	Webserver
 				{
 					client.location = &(*it).second;
 					add_root_and_index((*it).first, client);
-					return ;
+					return (0);
 				}
 
 				if (request_target == "/")
-					return ;
+					return (0);
 
 				found = request_target.find_last_of("/");
 				if (std::string::npos == found)
-					return ;
+					return (0);
 
 				if (found == 0)
 					found = 1;
 
 				request_target.erase(found);
 			}
+			return (0);
 		}
 //CONFIG_LOCATION______________________________________________________________
 		void	find_location_filename_extension(Client& client)
@@ -532,14 +549,11 @@ class	Webserver
 				it = client.server->location.find(request_target);
 
 				if (it != client.server->location.end())
-				{
 					client.location = &(*it).second;
-					add_root_and_index((*it).first, client);
-				}
 			}
 		}
 //CONFIG_LOCATION______________________________________________________________
-		void	add_root_and_index(const std::string& role, Client& client)
+		int		add_root_and_index(const std::string& role, Client& client)
 		{
 			print_debug("F add root and index (location: ["+role+"])");
 			std::string	tmp_path_file = client.path_file;
@@ -553,7 +567,7 @@ class	Webserver
 
 			size = client.path_file.size();
 			if (size == 0)
-				return ;
+				return (0);
 			dir = check_dir_or_file(client.path_file);
 			if (dir == 1)
 			{
@@ -561,11 +575,11 @@ class	Webserver
 					client.path_file += "/";
 				if (check_dir_or_file(client.path_file + client.location->index) != 0)
 					if (client.json_request["method"] == "GET" && client.location->autoindex)
-						return ;
+						return (0);
 				client.path_file += client.location->index;
 			}
+			return (0);
 
-			client.debug_info("client.path_file:" + client.path_file);
 		}
 //FIND_INTERPRETER_____________________________________________________________
 		void	find_interpreter()

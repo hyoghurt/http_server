@@ -1,7 +1,7 @@
 #ifndef CLIENT_HPP
 # define CLIENT_HPP
 
-# define BUF_SIZE 24
+# define BUF_SIZE 1024
 # define TIME_KEEP_ALIVE 20
 
 # include <iostream>
@@ -90,6 +90,13 @@ class	Client
 				return (1);
 			}
 			return (0);
+		}
+
+		int		check_redirect()
+		{
+			if (location->return_code != 0)
+				responseHeader["Location"] = location->return_location;
+			return (location->return_code);
 		}
 
 		int		check_413(void)
@@ -217,24 +224,29 @@ class	Client
 		{
 			size_t		found;
 
-			found = str.find_last_of('.');
-			responseHeader["Content-Type"] = "text/plain";
-			if (found != std::string::npos)
+			if (location->uploadPass)
+				responseHeader["Content-Type"] = "application/octet-stream";
+			else
 			{
-				if (str.substr(found) == ".html")
-					responseHeader["Content-Type"] = "text/html";
-				else if (str.substr(found) == ".css")
-					responseHeader["Content-Type"] = "text/css";
-				else if (str.substr(found) == ".csv")
-					responseHeader["Content-Type"] = "text/csv";
-				else if (str.substr(found) == ".xml")
-					responseHeader["Content-Type"] = "text/xml";
-				else if (str.substr(found) == ".png")
-					responseHeader["Content-Type"] = "image/png";
-				else if (str.substr(found) == ".jpeg")
-					responseHeader["Content-Type"] = "image/jpeg";
-				else if (str.substr(found) == ".gif")
-					responseHeader["Content-Type"] = "image/gif";
+				found = str.find_last_of('.');
+				responseHeader["Content-Type"] = "text/plain";
+				if (found != std::string::npos)
+				{
+					if (str.substr(found) == ".html")
+						responseHeader["Content-Type"] = "text/html";
+					else if (str.substr(found) == ".css")
+						responseHeader["Content-Type"] = "text/css";
+					else if (str.substr(found) == ".csv")
+						responseHeader["Content-Type"] = "text/csv";
+					else if (str.substr(found) == ".xml")
+						responseHeader["Content-Type"] = "text/xml";
+					else if (str.substr(found) == ".png")
+						responseHeader["Content-Type"] = "image/png";
+					else if (str.substr(found) == ".jpeg")
+						responseHeader["Content-Type"] = "image/jpeg";
+					else if (str.substr(found) == ".gif")
+						responseHeader["Content-Type"] = "image/gif";
+				}
 			}
 		}
 //POST_________________________________________________________________________
@@ -309,92 +321,11 @@ class	Client
 
 			responseHeader["Content-Type"] = "text/html";
 		}
-
-//CGI__________________________________________________________________________
-		void	cgi_env(void)
-		{
-			print_debug("F cgi env");
-
-			//envCgi.clear();
-			//envCgi["AUTH_TYPE"] = "";		//delete
-			envCgi["CONTENT_LENGTH"] = json_request["Content-Length"];
-			envCgi["CONTENT_TYPE"] = json_request["Content-Type"];
-			envCgi["GATEWAY_INTERFACE"] = "CGI/0.1";
-			envCgi["PATH_TRANSLATED"] = "./" + location->root + envCgi["PATH_INFO"];
-			envCgi["REMOTE_ADDR"] = addr;
-			//envCgi["REMOTE_HOST"] = "";		//delete
-			//envCgi["REMOTE_IDENT"] = "";	//delete
-			//envCgi["REMOTE_USER"] = "";		//delete
-			envCgi["REQUEST_METHOD"] = json_request["method"];
-			envCgi["SCRIPT_NAME"] = json_request["request_target"];		//!!! write
-			envCgi["SERVER_NAME"] = server->serverName;
-			envCgi["SERVER_PORT"] = server->port;
-			envCgi["SERVER_PROTOCOL"] = "HTTP/1.1";
-			envCgi["SERVER_SOFTWARE"] = "La Femme Nikita 0.1";
-		}
-//CGI__________________________________________________________________________
-		char**	cgi_create_env(void)
-		{
-			print_debug("F create env");
-
-			cgi_env();
-
-			try
-			{
-				std::map<std::string, std::string>::iterator	it;
-				int												i;
-				char											**env;
-
-				env = new char*[envCgi.size() + 1];
-
-				i = 0;
-				for (it = envCgi.begin(); it != envCgi.end(); ++it)
-				{
-					env[i] = strdup(((*it).first + "=" + (*it).second).c_str());
-					if (env[i] == nullptr)
-						return (free_env(env));
-					++i;
-				}
-				env[i] = nullptr;
-
-				return (env);
-			}
-			catch (std::bad_alloc& ba)
-			{
-				print_error("cgi_create_env: bad_alloc");
-				return (nullptr);
-			}
-		}
-//CGI__________________________________________________________________________
-		char**	cgi_create_arg() const
-		{
-			char	**arg;
-
-			try
-			{
-				arg = new char*[3];
-
-				arg[0] = strdup(interpreter.c_str());
-				if (arg[0] == nullptr)
-					return (free_env(arg));
-				arg[1] = strdup(path_file.c_str());
-				if (arg[1] == nullptr)
-					return (free_env(arg));
-				arg[2] = nullptr;
-			}
-			catch (std::bad_alloc& ba)
-			{
-				print_error("cgi_create_arg: bad_alloc");
-				return (nullptr);
-			}
-
-			return (arg);
-		}
-
 //CGI__________________________________________________________________________
 		int		cgi_run()
 		{
 			print_debug("F run cgi");
+			interpreter = location->cgiPass;
 
 			char	**arg = cgi_create_arg();
 			char	**env = cgi_create_env();
@@ -437,15 +368,15 @@ class	Client
 			wait(&status);
 			close(pipefd[1]);
 
-			if (WEXITSTATUS(status) != 0)
-			{
-				status_code = 500;
-				print_error("execve exit 0");
-			}
-			else if (WEXITSTATUS(status) == 2)
+			if (WEXITSTATUS(status) == 2)
 			{
 				status_code = 404;
 				print_info("execve exit 2");
+			}
+			else if (WEXITSTATUS(status) != 0)
+			{
+				status_code = 500;
+				print_error("execve exit 0");
 			}
 			else
 			{
@@ -459,15 +390,117 @@ class	Client
 			return (status_code);
 		}
 //CGI__________________________________________________________________________
+		char**	cgi_create_arg() const
+		{
+			char	**arg;
+
+			try
+			{
+				arg = new char*[3];
+
+				arg[0] = strdup(interpreter.c_str());
+				if (arg[0] == nullptr)
+					return (free_env(arg));
+				arg[1] = strdup(path_file.c_str());
+				if (arg[1] == nullptr)
+					return (free_env(arg));
+				arg[2] = nullptr;
+			}
+			catch (std::bad_alloc& ba)
+			{
+				print_error("cgi_create_arg: bad_alloc");
+				return (nullptr);
+			}
+
+			return (arg);
+		}
+//CGI__________________________________________________________________________
+		char**	cgi_create_env(void)
+		{
+			print_debug("F create env");
+			try
+			{
+				std::map<std::string, std::string>::iterator	it;
+				int												i;
+				char											**env;
+
+				cgi_env();
+				env = new char*[envCgi.size() + 1];
+
+				i = 0;
+				for (it = envCgi.begin(); it != envCgi.end(); ++it)
+				{
+					env[i] = strdup(((*it).first + "=" + (*it).second).c_str());
+					if (env[i] == nullptr)
+						return (free_env(env));
+					++i;
+				}
+				env[i] = nullptr;
+
+				return (env);
+			}
+			catch (std::bad_alloc& ba)
+			{
+				print_error("cgi_create_env: bad_alloc");
+				return (nullptr);
+			}
+		}
+//CGI__________________________________________________________________________
+		void	cgi_env(void)
+		{
+			print_debug("F cgi env");
+
+			//envCgi.clear();
+			//envCgi["AUTH_TYPE"] = "";		//delete
+			envCgi["CONTENT_LENGTH"] = json_request["Content-Length"];
+			envCgi["CONTENT_TYPE"] = json_request["Content-Type"];
+			envCgi["GATEWAY_INTERFACE"] = "CGI/0.1";
+			envCgi["PATH_TRANSLATED"] = "./" + location->root + envCgi["PATH_INFO"];
+			envCgi["REMOTE_ADDR"] = addr;
+			//envCgi["REMOTE_HOST"] = "";		//delete
+			//envCgi["REMOTE_IDENT"] = "";	//delete
+			//envCgi["REMOTE_USER"] = "";		//delete
+			envCgi["REQUEST_METHOD"] = json_request["method"];
+			envCgi["SCRIPT_NAME"] = json_request["request_target"];		//!!! write
+			envCgi["SERVER_NAME"] = server->serverName;
+			envCgi["SERVER_PORT"] = server->port;
+			envCgi["SERVER_PROTOCOL"] = "HTTP/1.1";
+			envCgi["SERVER_SOFTWARE"] = "La Femme Nikita 0.1";
+		}
+//CGI__________________________________________________________________________
+		int		cgi_read(int fd)
+		{
+			long    bytes;
+
+			body.clear();
+
+			bytes = read(fd, buf, BUF_SIZE - 1);
+			while (bytes > 0)
+			{
+				buf[bytes] = '\0';
+				body.append(buf);
+				bytes = read(fd, buf, BUF_SIZE - 1);
+			}
+
+			if (bytes < 0)
+				return (500);
+			return (200);
+		}
+//CGI__________________________________________________________________________
 		void	cgi_header_body()
 		{
 			std::map<std::string, std::string>::iterator	it;
 			std::map<std::string, std::string>				m;
 			int												found;
+			int												ofset;
 
+			ofset = 4;
 			found = body.find("\r\n\r\n");
 			if (found == std::string::npos)
+			{
+				ofset = 2;
 				found = body.find("\n\n");
+			}
 			if (found == std::string::npos)
 				return;
 
@@ -475,37 +508,7 @@ class	Client
 			for (it = m.begin(); it != m.end(); ++it)
 				responseHeader[(*it).first] = (*it).second;
 
-			body.erase(0, found + 4);
-		}
-//CGI__________________________________________________________________________
-		std::map<std::string, std::string>
-			cgi_parser_header_one(const std::string& str)
-		{
-			std::map<std::string, std::string>	m;
-			size_t								end;
-			size_t								start(0);
-			std::string							tmp;
-
-			start = str.find_first_not_of(" ", start);
-			if (start == std::string::npos)
-				return (m);
-
-			end = str.find(" ", start);
-			if (end == std::string::npos)
-			{
-				m["http_version"] = str.substr(start);
-				return (m);
-			}
-			m["http_version"] = str.substr(start, end - start);
-
-			start = str.find_first_not_of(" ", end);
-			if (end == std::string::npos)
-			{
-				m.clear();
-				return (m);
-			}
-			m["status code"] = str.substr(start);
-			return (m);
+			body.erase(0, found + ofset);
 		}
 //CGI__________________________________________________________________________
 		std::map<std::string, std::string>	cgi_parser_header(std::string str)
@@ -538,23 +541,34 @@ class	Client
 			return (cgi_head);
 		}
 //CGI__________________________________________________________________________
-		int		cgi_read(int fd)
+		std::map<std::string, std::string>
+			cgi_parser_header_one(const std::string& str)
 		{
-			long    bytes;
+			std::map<std::string, std::string>	m;
+			size_t								end;
+			size_t								start(0);
+			std::string							tmp;
 
-			body.clear();
+			start = str.find_first_not_of(" ", start);
+			if (start == std::string::npos)
+				return (m);
 
-			bytes = read(fd, buf, BUF_SIZE - 1);
-			while (bytes > 0)
+			end = str.find(" ", start);
+			if (end == std::string::npos)
 			{
-				buf[bytes] = '\0';
-				body.append(buf);
-				bytes = read(fd, buf, BUF_SIZE - 1);
+				m["http_version"] = str.substr(start);
+				return (m);
 			}
+			m["http_version"] = str.substr(start, end - start);
 
-			if (bytes < 0)
-				return (500);
-			return (200);
+			start = str.find_first_not_of(" ", end);
+			if (end == std::string::npos)
+			{
+				m.clear();
+				return (m);
+			}
+			m["status code"] = str.substr(start);
+			return (m);
 		}
 //RESPONSE_HEADER______________________________________________________________
 		void	response_header_connection(void)
@@ -566,7 +580,7 @@ class	Client
 			responseHeader["Keep-Alive"] = "timeout="
 				+ std::to_string(TIME_KEEP_ALIVE);
 		}
-
+//RESPONSE_HEADER______________________________________________________________
 		void	response_total(void)
 		{
 			std::map<std::string, std::string>::iterator	it;
