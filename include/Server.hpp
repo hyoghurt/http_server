@@ -17,7 +17,10 @@
 class	Server
 {
 	public:
-		Server()					{}
+		Server()
+		{
+			clientMaxBodySize = -1;
+		}
 		Server(const Server &oth)	{ *this = oth; }
 		~Server() {}
 
@@ -44,27 +47,13 @@ class	Server
 		void				setPort(const int& port)
 		{ this->port = port; }
 
-		Server(const std::string& ipAddress, const std::string& port,
-				const std::string& serverName,
-				const int& bodySize,
-				const std::map<int, std::string> errorPage,
-				const std::map<std::string, Location> location)
-		{
-			this->ipAddress = ipAddress;
-			this->port = port;
-			this->serverName = serverName;
-			this->clientMaxBodySize = bodySize;
-			this->errorPage = errorPage;
-			this->location = location;
-		}
-
 	public:
 		std::string							ipAddress;
 		std::string							port;
 		std::string							serverName;
 		int									clientMaxBodySize;
 		std::map<int, std::string>			errorPage;
-		std::map<std::string, Location>		location;
+		std::vector<Location>				location;
 };
 
 #endif

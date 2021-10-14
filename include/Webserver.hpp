@@ -9,9 +9,13 @@
 # include <stdlib.h> //atoi
 # include <dirent.h> //opendir
 # include <sys/stat.h> //stat or <sys/types.h> <unistd.h>
+# include <sstream> //std::istringstream
+# include <csignal>
 
 # include "Server.hpp"
 # include "Client.hpp"
+
+# include <cmath> //pow
 
 /*
  * +	check write and read -1 and 0
@@ -21,15 +25,18 @@
  * +	скачать то Content-Type: application/octet-stream
  * +	написат redirect
  * +	использовать server_name
+ * +	проверить автоиндекс / в конце
+ * +	подисать cgi post
  *
  *
+ *
+ * исправить тест с размером тела 100000000 и отправки его в cgi
+ * исправить код ответа при создании файла
  * подисать cgi окружение
- * подисать cgi post
  * написать signal для выхода из программы
  * запустить tester
  * запустить siege
  *
- * проверить автоиндекс / в конце
  * раширение .cgi прочесть файл и найти интерпритатор
  * корректировка парсера полученного хедера (пробелы и перенос строки)
  *
@@ -65,12 +72,18 @@ class	Webserver
 	public:
 
 //CONSTRUCTOR__________________________________________________________________
-		Webserver()						{ find_interpreter(); }
+		//Webserver() : log_file("log.log")
+		Webserver()
+		{
+			find_interpreter();
+		}
 //COPY_________________________________________________________________________
 		Webserver(const Webserver& oth) { *this = oth; }
 //DESTRUCTOR___________________________________________________________________
 		~Webserver()
 		{
+			std::cout << "destructor webserver" << std::endl;
+
 			std::vector<int>::iterator	it;
 
 			for (it = listenSocket.begin(); it != listenSocket.end(); ++it)
@@ -179,6 +192,26 @@ class	Webserver
 			return (socketListen);
 		}
 
+		void	add_client_size()
+		{
+			std::vector<Server>::iterator		it;
+			std::vector<Location>::iterator		lc;
+
+			for (it = server.begin(); it != server.end(); ++it)
+			{
+				for (lc = (*it).location.begin(); lc != (*it).location.end(); ++lc)
+				{
+					if ((*lc).clientMaxBodySize == -1)
+						(*lc).clientMaxBodySize = (*it).clientMaxBodySize;
+				}
+			}
+		}
+
+		static void	signal_handler(int sig)
+		{
+			//this->~Webserver();
+		}
+
 //START_WEBSERVER______________________________________________________________
 		int		start()
 		{
@@ -186,6 +219,10 @@ class	Webserver
 			fd_set		writefds;
 			int			max_d;
 			int			num(0);
+
+			//std::signal(SIGINT, Webserver::signal_handler);
+
+			add_client_size();
 
 			//мультиплексирование ввода-вывода select() poll() kqueue()________
 			while (1)
@@ -273,33 +310,51 @@ class	Webserver
 			{
 				socket_client = (*it_client).getSocket();
 
+				bytes = 0;
+
 				//данные_для_отправки__________________________________________
-				if (FD_ISSET(socket_client, &writefds))
+				if ((*it_client).flag && FD_ISSET(socket_client, &writefds))
 					bytes = writeSocket(*it_client);
 
 				//данные_для_чтения____________________________________________
-				if (FD_ISSET(socket_client, &readfds))
+				else if (FD_ISSET(socket_client, &readfds))
 					bytes = readSocket(*it_client);
 
 				//закрытие_клиента_____________________________________________
 				if (bytes == -1 || checkCloseClient(*it_client))
 				{
+
+					std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
+					(*it_client).debug_show_map((*it_client).json_request);
+					std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
+					
+					std::cout << "bytes=[" << bytes << "]check=[" << checkCloseClient(*it_client) << "]" << std::endl;
+
 					(*it_client).debug_info("close socket");
 
 					close(socket_client);
 					it_client = client.erase(it_client);
 					continue;
 				}
-				bytes = 0;
-
 				++it_client;
 			}
+		}
+
+		size_t		base16(const std::string& str)
+		{
+			size_t		n;
+
+			std::istringstream(str) >> std::hex >> n;
+			return (n);
 		}
 //READ_SOCKET__________________________________________________________________
 		int		readSocket(Client& client)
 		{
 			int				f, f2;
 			std::string		len;
+			size_t			found, found2;
+			std::map<std::string, std::string>::iterator	it;
+			int				max_header(0);
 
 			//чтение_данных_от_клиента_________________________________________
 			int	bytes = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
@@ -308,33 +363,92 @@ class	Webserver
 			{
 				client.setTimeStart();
 
-				client.debug_info("get bytes: " + std::to_string(bytes));
+				//client.debug_info("get bytes: " + std::to_string(bytes));
 
 				client.buf[bytes] = '\0';
 				client.request.append(client.buf);
 
 				if (client.readByte == 0)
 				{
-					if (client.request.find("\r\n\r\n") != std::string::npos)
+					found = client.request.find("\r\n\r\n");
+
+					if (found != std::string::npos)
 					{
-						f = client.request.find("Content-Length:");
-						if (f != std::string::npos)
-						{
-							f2 = client.request.find("\r\n", f);
-							len = client.request.substr(f + 16, f2 - (f + 16));
-							client.readByte = atoi(len.c_str());
-						}
-						client.readByte += client.request.find("\r\n\r\n") + 4;
+						std::cout << client.request << std::endl << std::endl;
+
+						client.create_json_request_header(client.request.substr(0, found));
+						client.request.erase(0, found + 4);
+
+						it = client.json_request.find("Content-Length");
+						if (it != client.json_request.end())
+							client.readByte = atoi((*it).second.c_str());
+
+						it = client.json_request.find("Transfer-Encoding");
+						if (it != client.json_request.end() && (*it).second == "chunked")
+							client.chunked = 1;
 					}
 				}
-				//получили_данные_полностью____________________________________
-				if (client.request.size() == client.readByte)
+				while (client.chunked > 0)
 				{
-					std::cout << client.request << std::endl;
+					if (client.chunked == 1)
+					{
+						found = client.request.find("\r\n");
+						if (found != std::string::npos)
+						{
+							client.readByte = base16(client.request.substr(0, found));
+							std::cout << "chunk=" << client.readByte << std::endl;
+							if (client.readByte > 0)
+							{
+								client.chunked = 2;
+								client.request.erase(0, found + 2);
+							}
+							else
+							{
+								client.chunked = 0;
+								client.request = client.str_chunked;
+								client.readByte = client.request.size();
+							}
+						}
+						else
+						{
+							break ;
+						}
+					}
+					if (client.chunked == 2)
+					{
+						if (client.request.size() >= client.readByte + 2)
+						{
+							client.str_chunked += client.request.substr(0, client.readByte);
+							client.request.erase(0, client.readByte + 2);
+							client.chunked = 1;
+						}
+						else
+						{
+							break ;
+						}
+					}
+				}
+				/*
+				if (client.json_request.empty() && client.request.size() > 10000)
+				{
+					std::cout << "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheererere" << std::endl;
+					create_response(client, 413);
+					return (-1);
+				}
+				*/
+				//получили_данные_полностью____________________________________
+				if (client.chunked == 0 && client.request.size() == client.readByte)
+				{
 
 					client.readByte = 0;
+					client.json_request["body"] = client.request;
+
+					std::cout << "----------------------------------------" << std::endl;
+					std::cout << "BODY SIZE = " << client.json_request["body"].size() << std::endl;
+					std::cout << "-----------------------------------------" << std::endl;
+
 					//создание_ответа__________________________________________
-					create_response(client);
+					create_response(client, max_header);
 					//закрытие_сокета_чтения___________________________________
 					//shutdown(client.socket, 0);
 				}
@@ -344,6 +458,8 @@ class	Webserver
 //WRITE_SOCKET_________________________________________________________________
 		int		writeSocket(Client& client)
 		{
+			client.flag = 1;
+
 			//отправка_данных_клиенту__________________________________________
 			int	bytes = send(client.socket, client.response.c_str(),
 					client.response.size(), 0);
@@ -355,6 +471,10 @@ class	Webserver
 				client.debug_info("write bytes: " + std::to_string(bytes)
 					+ " ost bytes:" + std::to_string(client.response.size()));
 
+				if (client.response.empty())
+				{
+					client.flag = 0;
+				}
 				//закрытие_сокета_отправкиi____________________________________
 				/*
 				if (client.response.empty())
@@ -364,19 +484,20 @@ class	Webserver
 			return (bytes);
 		}
 //RESPONSE_____________________________________________________________________
-		void	create_response(Client& client)
+		void	create_response(Client& client, const int& max_header)
 		{
 			print_debug("F create response");
 
 			int				status_code;
 			std::string		path_file;
 
-			//парсер_запроса_клиента___________________________________________
-			client.create_json_request();
-			client.request.clear();
+			//client.debug_show_map(client.json_request);
 
 			//выполнение_запроса_______________________________________________
-			status_code = processing_request(client);
+			if (max_header == 413)
+				status_code = 413;
+			else
+				status_code = processing_request(client);
 
 			//формирование_итога_для_отправки__________________________________
 			client.responseHeader["Status"] = get_status_code(status_code);
@@ -391,8 +512,8 @@ class	Webserver
 			}
 			client.response_total();
 
-			std::cout << client.header << std::endl;
-			//std::cout << client.response << std::endl;
+			//std::cout << client.header << std::endl;
+			std::cout << client.response << std::endl;
 
 			//отправка_данных_клиенту__________________________________________
 			writeSocket(client);
@@ -407,21 +528,25 @@ class	Webserver
 			if (client.server == 0)
 				return (400);
 
-			//проверка_размера_тела_запроса____________________________________
-			if (client.check_413())
-				return (413);
-
 			//вытащить_переменные_для_cgi______________________________________
 			client.find_query_string_path_info();
 
 			//привязка_к_config_location_______________________________________
-			find_location(client);
-			if (client.location == 0)
+			int	status = find_location(client);
+
+			if (status == 400)
 				return (400);
+
+			if (status == 301)
+				return (301);
 
 			//редирект_________________________________________________________
 			if (client.check_redirect())
 				return (client.location->return_code);
+
+			//проверка_размера_тела_запроса____________________________________
+			if (client.check_413())
+				return (413);
 
 			//проверка_метода_(GET,POST,DELETE)________________________________
 			if (client.check_501())
@@ -488,15 +613,51 @@ class	Webserver
 			return (0);
 		}
 //CONFIG_LOCATION______________________________________________________________
-		int		find_location(Client& client)
+		int			find_location(Client& client)
 		{
 			client.location = nullptr;
+
 			find_location_filename_extension(client);
+
 			if (client.location == nullptr)
 			{
 				find_location_directory(client);
-				find_location_filename_extension(client);
+
+				if (client.location != nullptr)
+				{
+					if (client.location->rule != "/")
+						client.path_file.erase(0, client.location->rule.size());
+					client.path_file = client.location->root + client.path_file;
+
+					int	d = check_dir_or_file(client.path_file);
+					if (d == 1)
+					{
+						int	size = client.path_file.size();
+						if (client.path_file[size - 1] != '/')
+						{
+							client.path_file.push_back('/');
+							client.responseHeader["Location"] = client.json_request["request_target"] + "/";
+							return (301);
+						}
+
+						d = check_dir_or_file(client.path_file + client.location->index);
+						/*
+						if (d != -1 && !client.location->autoindex)
+							client.path_file.append(client.location->index);
+							*/
+						if (d == -1)
+						{
+							if (!client.location->autoindex)
+								client.path_file.append(client.location->index);
+						}
+						if (d == 0)
+							client.path_file.append(client.location->index);
+					}
+					find_location_filename_extension(client);
+				}
 			}
+			if (client.location == nullptr)
+				return (400);
 
 			client.debug_info("client.path_file:" + client.path_file);
 			return (0);
@@ -504,22 +665,18 @@ class	Webserver
 //CONFIG_LOCATION______________________________________________________________
 		int		find_location_directory(Client &client)
 		{
-			std::map<std::string, Location>::iterator	it;
-			std::string									request_target;
-			int											found;
+			std::string		request_target;
+			int				found;
 
 			request_target = client.path_file;
 			print_debug("F find loacation for target: ["+request_target+"]");
 
 			while (request_target.length() != 0)
 			{
-				it = client.server->location.find(request_target);
-				if (it != client.server->location.end())
-				{
-					client.location = &(*it).second;
-					add_root_and_index((*it).first, client);
+				client.location = return_location(client, request_target);
+
+				if (client.location != nullptr)
 					return (0);
-				}
 
 				if (request_target == "/")
 					return (0);
@@ -536,50 +693,37 @@ class	Webserver
 			return (0);
 		}
 //CONFIG_LOCATION______________________________________________________________
+		Location*	return_location(Client& client, const std::string& str)
+		{
+			std::vector<Location>::iterator	it;
+
+			it = client.server->location.begin();
+			while (it != client.server->location.end())
+			{
+				if ((*it).rule == str)
+					return (&(*it));
+				++it;
+			}
+
+			return (nullptr);
+		}
+//CONFIG_LOCATION______________________________________________________________
 		void	find_location_filename_extension(Client& client)
 		{
-			std::map<std::string, Location>::iterator	it;
-			std::string									request_target;
-			int											found;
+			std::string		request_target;
+			size_t			found;
+			Location*		tmp_loc;
+
+			print_debug("F find loacation for target: ["+client.path_file+"]");
 
 			found = client.path_file.find_last_of('.');
 			if (found != std::string::npos)
 			{
 				request_target = client.path_file.substr(found);
-				it = client.server->location.find(request_target);
-
-				if (it != client.server->location.end())
-					client.location = &(*it).second;
+				tmp_loc = return_location(client, request_target);
+				if (tmp_loc != nullptr)
+					client.location = tmp_loc;
 			}
-		}
-//CONFIG_LOCATION______________________________________________________________
-		int		add_root_and_index(const std::string& role, Client& client)
-		{
-			print_debug("F add root and index (location: ["+role+"])");
-			std::string	tmp_path_file = client.path_file;
-			size_t		size;
-			int			dir;
-
-			if (role != "/" && role.find('.') == std::string::npos)
-				tmp_path_file.erase(0, role.size());
-
-			client.path_file = client.location->root + tmp_path_file;
-
-			size = client.path_file.size();
-			if (size == 0)
-				return (0);
-			dir = check_dir_or_file(client.path_file);
-			if (dir == 1)
-			{
-				if ('/' != client.path_file[size - 1])
-					client.path_file += "/";
-				if (check_dir_or_file(client.path_file + client.location->index) != 0)
-					if (client.json_request["method"] == "GET" && client.location->autoindex)
-						return (0);
-				client.path_file += client.location->index;
-			}
-			return (0);
-
 		}
 //FIND_INTERPRETER_____________________________________________________________
 		void	find_interpreter()
@@ -687,6 +831,7 @@ class	Webserver
 		std::vector<Client>					client;
 		std::vector<int>					listenSocket;
 		std::map<std::string, std::string>	interpreter;
+		//std::ofstream						log_file;
 };
 
 #endif

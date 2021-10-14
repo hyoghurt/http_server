@@ -2,7 +2,7 @@
 # define CLIENT_HPP
 
 # define BUF_SIZE 1024
-# define TIME_KEEP_ALIVE 20
+# define TIME_KEEP_ALIVE 5
 
 # include <iostream>
 # include <dirent.h> //opendir
@@ -27,6 +27,9 @@ class	Client
 			request = "";
 			response = "";
 			readByte = 0;
+			flag = 0;
+			chunked = 0;
+			str_chunked = "";
 		}
 
 		Client(const Client& oth)	{ *this = oth; }
@@ -51,6 +54,9 @@ class	Client
 			this->envCgi = oth.envCgi;
 			this->interpreter = oth.interpreter;
 			this->addr = oth.addr;
+			this->flag = oth.flag;
+			this->chunked = oth.chunked;
+			this->str_chunked = oth.str_chunked;
 			return *this;
 		}
 
@@ -84,7 +90,7 @@ class	Client
 
 			method = json_request["method"];
 
-			if (method != "GET" && method != "POST" && method != "DELETE")
+			if (method != "GET" && method != "POST" && method != "DELETE" && method != "PUT" && method != "HEAD")
 			{
 				responseHeader["Allow"] = "GET, POST, DELETE";
 				return (1);
@@ -101,17 +107,12 @@ class	Client
 
 		int		check_413(void)
 		{
-			int				size;
-
-			if (0 == server->clientMaxBodySize)
+			if (-1 == location->clientMaxBodySize)
 				return (0);
 
-			if (!json_request["Content-Length"].empty())
-			{
-				size = atoi(json_request["Content-Length"].c_str());
-				if (size > server->clientMaxBodySize)
-					return (1);
-			}
+			if (json_request["body"].size() > location->clientMaxBodySize)
+				return (1);
+
 			return (0);
 		}
 
@@ -254,6 +255,9 @@ class	Client
 		{
 			print_debug("F post file: " + path_file);
 
+			if (json_request["body"].size() == 0)
+				return (204);
+
 			std::ofstream	myfile(path_file, std::ios::binary);
 
 			if (!myfile)
@@ -325,7 +329,10 @@ class	Client
 		int		cgi_run()
 		{
 			print_debug("F run cgi");
+
+			body.clear();
 			interpreter = location->cgiPass;
+			path_file = getenv("PWD") + path_file;
 
 			char	**arg = cgi_create_arg();
 			char	**env = cgi_create_env();
@@ -339,34 +346,68 @@ class	Client
 
 			return (status_code);
 		}
+
+//CGI__________________________________________________________________________
+		void	cgi_return_save_std_fd(const int& in, const int& out)
+		{
+			dup2(in, 0);
+			dup2(out, 1);
+
+			close(in);
+			close(out);
+		}
 //CGI__________________________________________________________________________
 		int		cgi_fork(char** arg, char** env)
 		{
+			int		fd_in_pipe[2], fd_out_pipe[2];
 			int		status;
-			pid_t	pid;
-			int		pipefd[2];
 			int		status_code(200);
+			pid_t	pid;
 
-			pipe(pipefd);
+			if (pipe(fd_in_pipe) != 0 || pipe(fd_out_pipe) != 0)
+			{
+				print_error("CGI: pipe");
+				return (500);
+			}
+
+			int save_fd_in = dup(0);
+			int save_fd_out = dup(1);
+
+			if ((dup2(fd_out_pipe[1], 1) == -1)
+					|| (dup2(fd_in_pipe[0], 0) == -1))
+			{
+				print_error("CGI: dup2");
+				return (500);
+			}
+
+			close(fd_in_pipe[0]);
+			close(fd_out_pipe[1]);
+
+			//запускаем дочерний процесс_______________________________________
 			pid = fork();
-
 			if (pid == -1)
 			{
+				close(fd_in_pipe[1]);
+				close(fd_out_pipe[0]);
+				cgi_return_save_std_fd(save_fd_in, save_fd_out);
 				print_error("fork");
 				return (500);
 			}
 			if (pid == 0)
 			{
-				close(pipefd[0]);
-				dup2(pipefd[1], 1);
-				close(pipefd[1]);
-
+				close(fd_in_pipe[1]);
+				close(fd_out_pipe[0]);
 				execve(arg[0], arg, env);
 				exit (errno);
 			}
 
+			cgi_return_save_std_fd(save_fd_in, save_fd_out);
+
+			cgi_write(fd_in_pipe[1]);	//write error -1
+
+			close(fd_in_pipe[1]);
+
 			wait(&status);
-			close(pipefd[1]);
 
 			if (WEXITSTATUS(status) == 2)
 			{
@@ -380,12 +421,11 @@ class	Client
 			}
 			else
 			{
-				status_code = cgi_read(pipefd[0]);
+				status_code = cgi_read(fd_out_pipe[0]);
 				if (status_code == 200)
 					cgi_header_body();
 			}
-
-			close(pipefd[0]);
+			close(fd_out_pipe[0]);
 
 			return (status_code);
 		}
@@ -480,6 +520,25 @@ class	Client
 				buf[bytes] = '\0';
 				body.append(buf);
 				bytes = read(fd, buf, BUF_SIZE - 1);
+			}
+
+			if (bytes < 0)
+				return (500);
+			return (200);
+		}
+//CGI__________________________________________________________________________
+		int		cgi_write(int fd)
+		{
+			long    bytes(0);
+
+			bytes = write(fd, json_request["body"].c_str(),
+					json_request["body"].size());
+
+			while (bytes != json_request["body"].size())
+			{
+				json_request["body"].erase(0, bytes);
+				bytes = write(fd, json_request["body"].c_str(),
+						json_request["body"].size());
 			}
 
 			if (bytes < 0)
@@ -592,7 +651,7 @@ class	Client
 			if (!body.empty())
 				responseHeader["Content-Length"] = std::to_string(body.size());
 
-			header = json_request["http_version"] + " "
+			header = "HTTP/1.1 "
 				+ responseHeader["Status"] + "\r\n";
 			header += "Host: " + responseHeader["Host"] + "\r\n";
 
@@ -607,7 +666,14 @@ class	Client
 			}
 			header += "\r\n";
 
-			response = header + body;
+			if (json_request["method"] == "HEAD")
+				response = header;
+			else
+				response = header + body;
+
+			responseHeader.clear();
+			json_request.clear();
+			body.clear();
 		}
 //ADD__________________________________________________________________________
 		void	debug_info(const std::string& mes) const
@@ -688,6 +754,47 @@ class	Client
 			return (std::pair<std::string, std::string>(key, val));
 		}
 
+		void	create_json_request_header(const std::string& str)
+		{
+			size_t			end;
+			size_t			start(0);
+			std::string		tmp;
+
+			end = str.find(" ", start);
+			if (end == std::string::npos)
+				return ;
+			json_request["method"] = str.substr(start, end - start);
+
+			start = end + 1;
+			end = str.find(" ", start);
+			if (end == std::string::npos)
+				return ;
+			json_request["request_target"] = str.substr(start, end - start);
+
+			start = end + 1;
+			end = str.find("\r", start);
+			if (end == std::string::npos)
+				return ;
+			json_request["http_version"] = str.substr(start, end - start);
+
+			start = end + 2;
+			end = str.find("\n", start);
+			if (end == std::string::npos)
+				return ;
+			while (end != std::string::npos)
+			{
+				tmp = str.substr(start, end - start - 1);
+		
+				json_request.insert(return_key_val(tmp));
+		
+				start = end + 1;
+				end = str.find("\n", start);
+			}
+			tmp = str.substr(start);
+			json_request.insert(return_key_val(tmp));
+		}
+
+		/*
 		void	create_json_request(void)
 		{
 			size_t			end;
@@ -734,6 +841,7 @@ class	Client
 			tmp = request.substr(start);
 			json_request.insert(return_key_val(tmp));
 		}
+		*/
 
 	public:
 		int									socket;
@@ -752,6 +860,9 @@ class	Client
 		std::map<std::string, std::string>	envCgi;
 		std::string							interpreter;
 		std::string							addr;
+		int									flag;
+		int									chunked;
+		std::string							str_chunked;
 };
 
 #endif

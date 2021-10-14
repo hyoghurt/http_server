@@ -9,6 +9,7 @@ class	Location
 	public:
 		Location ()
 		{
+			rule = "";
 			root = "";
 			autoindex = false;
 			index = "index.html";
@@ -18,19 +19,46 @@ class	Location
 			cgiPass = "";
 			uploadPass = false;
 			dowloadPass = false;
+			clientMaxBodySize = -1;
 		}
-		~Location () {}
-		Location (const std::string& root, const bool autoindex,
-				const std::string& index,
-				const std::vector<std::string>& accessMethods)
+		Location (const Location& oth)	{ *this = oth; }
+
+		~Location ()					{}
+
+		Location&	operator= (const Location& oth)
 		{
-			this->root = root;
-			this->autoindex = autoindex;
-			this->index = index;
-			this->accessMethods = accessMethods;
+			this->rule = oth.rule;
+			this->root = oth.root;
+			this->autoindex = oth.autoindex;
+			this->index = oth.index;
+			this->accessMethods = oth.accessMethods;
+			this->return_code = oth.return_code;
+			this->return_location = oth.return_location;
+			this->cgiPass = oth.cgiPass;
+			this->uploadPass = oth.uploadPass;
+			this->dowloadPass = oth.dowloadPass;
+			this->clientMaxBodySize = oth.clientMaxBodySize;
+			return *this;
+		}
+
+		void	clear()
+		{
+			rule = "";
+			root = "";
+			autoindex = false;
+			index = "index.html";
+			accessMethods.clear();
+			accessMethods.push_back("GET");
+			return_code = 0;
+			return_location = "";
+			cgiPass = "";
+			uploadPass = false;
+			dowloadPass = false;
+			clientMaxBodySize = -1;
 		}
 
 	public:
+		std::string					rule;
 		std::string					root;
 		bool						autoindex;
 		std::string					index;
@@ -40,6 +68,7 @@ class	Location
 		std::string					cgiPass;
 		bool						uploadPass;
 		bool						dowloadPass;
+		int							clientMaxBodySize;
 };
 
 #endif
