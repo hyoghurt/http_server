@@ -379,24 +379,37 @@ class	Webserver
 						client.create_json_request_header(client.request.substr(0, found));
 						client.request.erase(0, found + 4);
 
+						found = client.request.find_first_not_of("\r\n");
+						if (found != std::string::npos)
+							client.request.erase(0, found);
+
 						it = client.json_request.find("Content-Length");
 						if (it != client.json_request.end())
 							client.readByte = atoi((*it).second.c_str());
 
 						it = client.json_request.find("Transfer-Encoding");
 						if (it != client.json_request.end() && (*it).second == "chunked")
+						{
+							std::cout << "chunked TRUE\n";
 							client.chunked = 1;
+						}
 					}
 				}
 				while (client.chunked > 0)
 				{
 					if (client.chunked == 1)
 					{
+						/*
+						found = client.request.find_first_not_of("\r\n");
+						if (found != std::string::npos)
+							client.request.erase(0, found);
+							*/
+
 						found = client.request.find("\r\n");
 						if (found != std::string::npos)
 						{
 							client.readByte = base16(client.request.substr(0, found));
-							std::cout << "chunk=" << client.readByte << std::endl;
+							//std::cout << "chunk=" << client.readByte << std::endl;
 							if (client.readByte > 0)
 							{
 								client.chunked = 2;
@@ -617,7 +630,7 @@ class	Webserver
 		{
 			client.location = nullptr;
 
-			find_location_filename_extension(client);
+			//find_location_filename_extension(client);
 
 			if (client.location == nullptr)
 			{

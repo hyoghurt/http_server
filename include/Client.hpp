@@ -332,11 +332,19 @@ class	Client
 
 			body.clear();
 			interpreter = location->cgiPass;
+			if (path_file[0] != '/')
+				path_file = "/" + path_file;
 			path_file = getenv("PWD") + path_file;
 
 			char	**arg = cgi_create_arg();
 			char	**env = cgi_create_env();
 			int		status_code(500);
+
+			std::cout << "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&\n";
+			debug_show_arg(arg);
+			std::cout << "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&\n";
+			debug_show_map(envCgi);
+			std::cout << "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&\n";
 
 			if (arg && env)
 				status_code = cgi_fork(arg, env);
@@ -359,6 +367,8 @@ class	Client
 //CGI__________________________________________________________________________
 		int		cgi_fork(char** arg, char** env)
 		{
+			print_debug("F cgi fork");
+
 			int		fd_in_pipe[2], fd_out_pipe[2];
 			int		status;
 			int		status_code(200);
@@ -395,20 +405,99 @@ class	Client
 			}
 			if (pid == 0)
 			{
+
+				setenv("CONTENT_LENGTH", std::to_string(json_request["body"].size()).c_str(), 0);
+				setenv("CONTENT_TYPE", json_request["Content-Type"].c_str(), 0);
+				setenv("GATEWAY_INTERFACE",  "CGI/0.1", 0);
+				setenv("PATH_TRANSLATED", "", 0);
+				setenv("REMOTE_ADDR", addr.c_str(), 0);
+				setenv("SERVER_NAME", (server->serverName).c_str(), 0);
+				setenv("SERVER_PORT", (server->port).c_str(), 0);
+				setenv("SERVER_SOFTWARE", "La Femme Nikita 0.1", 0);
+				setenv("SCRIPT_NAME", "check_tester/YoupiBanane/youpi.bla", 0);
+
+				setenv("SERVER_PROTOCOL", "HTTP/1.1", 0);
+				setenv("REQUEST_METHOD", json_request["method"].c_str(), 0);
+				setenv("PATH_INFO", interpreter.c_str(), 0);
+
 				close(fd_in_pipe[1]);
 				close(fd_out_pipe[0]);
-				execve(arg[0], arg, env);
+				//execve(arg[0], arg, env);
+				execv(arg[0], arg);
 				exit (errno);
 			}
 
 			cgi_return_save_std_fd(save_fd_in, save_fd_out);
 
-			cgi_write(fd_in_pipe[1]);	//write error -1
+			body.clear();
+			long		bytes(0);
+			std::string	tmp;
+			int			w(0);
+
+			while (bytes >= 0)
+			{
+				if (json_request["body"].size() > 0)
+				{
+					std::cout << "WRITE" << std::endl;
+
+					if (json_request["body"].size() > BUF_SIZE)
+					{
+						tmp = json_request["body"].substr(0, BUF_SIZE);
+						json_request["body"].erase(0, BUF_SIZE);
+					}
+					else
+						tmp = json_request["body"].substr();
+
+					std::cout << "bytes write: " << tmp.size() << std::endl;
+					bytes = write(fd_in_pipe[1], tmp.c_str(), tmp.size());
+					std::cout << "bytes write: " << bytes;
+					std::cout << " ost bytes: " << json_request["body"].size() << std::endl;
+
+					//json_request["body"].erase(0, bytes);
+				}
+				if (bytes < 0)
+					break ;
+
+				bytes = read(fd_out_pipe[0], buf, BUF_SIZE - 1);
+				if (bytes > 0)
+				{
+					buf[bytes] = '\0';
+					body.append(buf);
+				}
+				std::cout << "bytes read: " << bytes << std::endl;
+
+				w = waitpid(0, &status, WNOHANG);
+				if (w == -1)
+				{
+					print_error("waitpid -1");
+					break ;
+				}
+
+				if (w == 0)
+					break;
+			}
 
 			close(fd_in_pipe[1]);
+			close(fd_out_pipe[0]);
 
-			wait(&status);
+			std::cout << CYAN;
 
+			if (WIFEXITED(status) != 0)
+				std::cout << "CHILD correct end program" << std::endl;
+			else
+				std::cout << "CHILD no correct end program: " << WEXITSTATUS(status) << std::endl;
+
+			if (WIFSIGNALED(status))
+				std::cout << "CHILD call signal: " << WTERMSIG(status) << ": " << strsignal(WTERMSIG(status)) << std::endl;
+
+			if (WIFSTOPPED(status))
+				std::cout << "CHILD stop on signal " << WSTOPSIG(status) << std::endl;
+
+			std::cout << RESET;
+			/*
+			wirte exit status code this no work
+			std::cout << "exit STATUS " << WEXITSTATUS(status) << std::endl;
+			std::cout << "exit STATUS " << status << std::endl;
 			if (WEXITSTATUS(status) == 2)
 			{
 				status_code = 404;
@@ -419,13 +508,10 @@ class	Client
 				status_code = 500;
 				print_error("execve exit 0");
 			}
-			else
-			{
-				status_code = cgi_read(fd_out_pipe[0]);
-				if (status_code == 200)
-					cgi_header_body();
-			}
-			close(fd_out_pipe[0]);
+			*/
+
+			if (status_code == 200)
+				cgi_header_body();
 
 			return (status_code);
 		}
@@ -490,22 +576,25 @@ class	Client
 		{
 			print_debug("F cgi env");
 
-			//envCgi.clear();
 			//envCgi["AUTH_TYPE"] = "";		//delete
-			envCgi["CONTENT_LENGTH"] = json_request["Content-Length"];
+			envCgi["CONTENT_LENGTH"] = std::to_string(json_request["body"].size());
 			envCgi["CONTENT_TYPE"] = json_request["Content-Type"];
 			envCgi["GATEWAY_INTERFACE"] = "CGI/0.1";
-			envCgi["PATH_TRANSLATED"] = "./" + location->root + envCgi["PATH_INFO"];
+			envCgi["PATH_TRANSLATED"] = "";
 			envCgi["REMOTE_ADDR"] = addr;
 			//envCgi["REMOTE_HOST"] = "";		//delete
 			//envCgi["REMOTE_IDENT"] = "";	//delete
 			//envCgi["REMOTE_USER"] = "";		//delete
 			envCgi["REQUEST_METHOD"] = json_request["method"];
-			envCgi["SCRIPT_NAME"] = json_request["request_target"];		//!!! write
+			envCgi["SCRIPT_NAME"] = path_file;
 			envCgi["SERVER_NAME"] = server->serverName;
 			envCgi["SERVER_PORT"] = server->port;
 			envCgi["SERVER_PROTOCOL"] = "HTTP/1.1";
 			envCgi["SERVER_SOFTWARE"] = "La Femme Nikita 0.1";
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
+			envCgi["PATH_INFO"] = interpreter;
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/check_tester/YoupiBanane/youpi.bla";
+			//envCgi["PATH_INFO"] = "";
 		}
 //CGI__________________________________________________________________________
 		int		cgi_read(int fd)
@@ -529,20 +618,75 @@ class	Client
 //CGI__________________________________________________________________________
 		int		cgi_write(int fd)
 		{
+			std::cout << "cgi write\n";
+			std::cout << json_request["body"].size() << std::endl;
+
 			long    bytes(0);
 
-			bytes = write(fd, json_request["body"].c_str(),
-					json_request["body"].size());
 
-			while (bytes != json_request["body"].size())
-			{
-				json_request["body"].erase(0, bytes);
-				bytes = write(fd, json_request["body"].c_str(),
+			/*
+			if (json_request["body"].size() > 300)
+				json_request["body"].erase(300);
+
+			bytes = write(fd, json_request["body"].c_str(),
 						json_request["body"].size());
+						*/
+
+			bytes = write(fd, json_request["body"].c_str(), 8192);
+			/*
+			bytes = write(fd, json_request["body"].c_str(), 
+					json_request["body"].size());
+					*/
+
+			std::cout << "bytes " << bytes << std::endl;
+
+			json_request["body"].erase(0, bytes);
+
+			std::cout << "body_ " << json_request["body"].size() << std::endl;
+
+			while (!json_request["body"].empty())
+			{
+				std::cout << "while write " << bytes << std::endl;
+				std::cout << "size " << json_request["body"].size() << std::endl;
+
+				bytes = write(fd, json_request["body"].c_str(), 8192);
+				/*
+				bytes = write(fd, json_request["body"].c_str(), 
+						json_request["body"].size());
+						*/
+
+				if (bytes < 0)
+					std::cout << "bytessss -1\n";
+
+				json_request["body"].erase(0, bytes);
+				//bytes = write(fd, json_request["body"].c_str(),
+				//		json_request["body"].size());
 			}
+
+			/*
+			bytes = write(fd, json_request["body"].c_str(), 8192);
+			json_request["body"].erase(0, bytes);
+
+			while (!json_request["body"].empty())
+			{
+				sleep(1);
+				std::cout << "while write " << bytes << std::endl;
+				std::cout << "size " << json_request["body"].size() << std::endl;
+
+				bytes = write(1, json_request["body"].c_str(), 8192);
+				if (bytes < 0)
+					std::cout << "bytessss -1\n";
+				json_request["body"].erase(0, bytes);
+				//bytes = write(fd, json_request["body"].c_str(),
+				//		json_request["body"].size());
+			}
+			*/
+
 
 			if (bytes < 0)
 				return (500);
+
+			std::cout << "ehd cgi write\n";
 			return (200);
 		}
 //CGI__________________________________________________________________________
