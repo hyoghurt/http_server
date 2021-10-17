@@ -405,7 +405,10 @@ class	Client
 			}
 			if (pid == 0)
 			{
+				close(fd_in_pipe[1]);
+				close(fd_out_pipe[0]);
 
+				/*
 				setenv("CONTENT_LENGTH", std::to_string(json_request["body"].size()).c_str(), 0);
 				setenv("CONTENT_TYPE", json_request["Content-Type"].c_str(), 0);
 				setenv("GATEWAY_INTERFACE",  "CGI/0.1", 0);
@@ -415,15 +418,20 @@ class	Client
 				setenv("SERVER_PORT", (server->port).c_str(), 0);
 				setenv("SERVER_SOFTWARE", "La Femme Nikita 0.1", 0);
 				setenv("SCRIPT_NAME", "check_tester/YoupiBanane/youpi.bla", 0);
-
+				setenv("REQUEST_METHOD", json_request["method"].c_str(), 0);
+				setenv("SERVER_PROTOCOL", "HTTP/1.1", 0);
+				//setenv("PATH_INFO", "/Users/hyoghurt/ft_webserver/cgi_tester", 0);
+				setenv("PATH_INFO", "", 0);
+				setenv("QUERY_STRING", "", 0);
+				setenv("CONTENT_LENGTH", std::to_string(json_request["body"].size()).c_str(), 0);
 				setenv("SERVER_PROTOCOL", "HTTP/1.1", 0);
 				setenv("REQUEST_METHOD", json_request["method"].c_str(), 0);
-				setenv("PATH_INFO", interpreter.c_str(), 0);
+				setenv("PATH_INFO", "/Users/hyoghurt/ft_webserver", 0);
+				setenv("QUERY_STRING", "", 0);
+				//execv(arg[0], arg);
+				*/
 
-				close(fd_in_pipe[1]);
-				close(fd_out_pipe[0]);
-				//execve(arg[0], arg, env);
-				execv(arg[0], arg);
+				execve(arg[0], arg, env);
 				exit (errno);
 			}
 
@@ -433,67 +441,89 @@ class	Client
 			long		bytes(0);
 			std::string	tmp;
 			int			w(0);
+			char		bu[20001];
 
-			while (bytes >= 0)
+			std::cout << "_BODY_SIZE___________________________________" << std::endl;
+			std::cout << json_request["body"].size() << std::endl;
+			std::cout << "_____________________________________________" << std::endl;
+
+			int			f_w = 1;
+
+			while (1)
 			{
-				if (json_request["body"].size() > 0)
+				if (f_w == 1 && json_request["body"].size() >= 0)
 				{
 					std::cout << "WRITE" << std::endl;
 
-					if (json_request["body"].size() > BUF_SIZE)
+					if (json_request["body"].size() > 16384)
 					{
-						tmp = json_request["body"].substr(0, BUF_SIZE);
-						json_request["body"].erase(0, BUF_SIZE);
+						tmp = json_request["body"].substr(0, 16384);
+						bytes = write(fd_in_pipe[1], tmp.c_str(), tmp.size());
+						if (bytes > 0)
+						{
+							json_request["body"].erase(0, bytes);
+						}
+					}
+					else if (!json_request["body"].empty())
+					{
+						tmp = json_request["body"].substr();
+						bytes = write(fd_in_pipe[1], tmp.c_str(), tmp.size());
+						if (bytes > 0)
+						{
+							json_request["body"].erase(0, bytes);
+						}
 					}
 					else
-						tmp = json_request["body"].substr();
-
-					std::cout << "bytes write: " << tmp.size() << std::endl;
-					bytes = write(fd_in_pipe[1], tmp.c_str(), tmp.size());
-					std::cout << "bytes write: " << bytes;
-					std::cout << " ost bytes: " << json_request["body"].size() << std::endl;
-
-					//json_request["body"].erase(0, bytes);
+					{
+						bytes = write(fd_in_pipe[1], "\0", 1);
+						if (bytes > 0)
+						{
+							f_w = 0;
+						}
+					}
+					std::cout << "bytes write: " << bytes << " ost bytes: " << json_request["body"].size() << '\n';
 				}
-				if (bytes < 0)
-					break ;
-
-				bytes = read(fd_out_pipe[0], buf, BUF_SIZE - 1);
-				if (bytes > 0)
+				else
 				{
-					buf[bytes] = '\0';
-					body.append(buf);
+					break ;
 				}
+				/*
+				bytes = read(fd_out_pipe[0], bu, 20000);
+				if (bytes >= 0)
+				{
+					bu[bytes] = '\0';
+					body.append(bu);
+				}
+				else
+					break ;
 				std::cout << "bytes read: " << bytes << std::endl;
 
+
 				w = waitpid(0, &status, WNOHANG);
+				std::cout << "w=" << w << std::endl;
+
+				print_status_wait(status);
+
+				if (WIFEXITED(status) != 0)
+					break ;
+
+				if (w == 0)
+					break ;
+
 				if (w == -1)
 				{
 					print_error("waitpid -1");
 					break ;
 				}
-
-				if (w == 0)
-					break;
+				*/
 			}
 
 			close(fd_in_pipe[1]);
 			close(fd_out_pipe[0]);
 
-			std::cout << CYAN;
+			std::cout << "body.size=" << body.size() << std::endl;
+			std::cout << "end" << std::endl;
 
-			if (WIFEXITED(status) != 0)
-				std::cout << "CHILD correct end program" << std::endl;
-			else
-				std::cout << "CHILD no correct end program: " << WEXITSTATUS(status) << std::endl;
-
-			if (WIFSIGNALED(status))
-				std::cout << "CHILD call signal: " << WTERMSIG(status) << ": " << strsignal(WTERMSIG(status)) << std::endl;
-
-			if (WIFSTOPPED(status))
-				std::cout << "CHILD stop on signal " << WSTOPSIG(status) << std::endl;
-
-			std::cout << RESET;
 			/*
 			wirte exit status code this no work
 			std::cout << "exit STATUS " << WEXITSTATUS(status) << std::endl;
@@ -510,10 +540,29 @@ class	Client
 			}
 			*/
 
+			std::cout << "status_code= " << status_code << std::endl;
 			if (status_code == 200)
-				cgi_header_body();
+				status_code = cgi_header_body();
 
 			return (status_code);
+		}
+
+		void	print_status_wait(const int& status)
+		{
+			std::cout << CYAN;
+
+			if (WIFEXITED(status) != 0)
+				std::cout << "CHILD correct end program" << std::endl;
+			else
+				std::cout << "CHILD no correct end program: " << WEXITSTATUS(status) << std::endl;
+
+			if (WIFSIGNALED(status))
+				std::cout << "CHILD call signal: " << WTERMSIG(status) << ": " << strsignal(WTERMSIG(status)) << std::endl;
+
+			if (WIFSTOPPED(status))
+				std::cout << "CHILD stop on signal " << WSTOPSIG(status) << std::endl;
+
+			std::cout << RESET;
 		}
 //CGI__________________________________________________________________________
 		char**	cgi_create_arg() const
@@ -576,23 +625,38 @@ class	Client
 		{
 			print_debug("F cgi env");
 
-			//envCgi["AUTH_TYPE"] = "";		//delete
-			envCgi["CONTENT_LENGTH"] = std::to_string(json_request["body"].size());
-			envCgi["CONTENT_TYPE"] = json_request["Content-Type"];
+			envCgi["AUTH_TYPE"] = "basic";							//delete
 			envCgi["GATEWAY_INTERFACE"] = "CGI/0.1";
-			envCgi["PATH_TRANSLATED"] = "";
-			envCgi["REMOTE_ADDR"] = addr;
-			//envCgi["REMOTE_HOST"] = "";		//delete
-			//envCgi["REMOTE_IDENT"] = "";	//delete
-			//envCgi["REMOTE_USER"] = "";		//delete
-			envCgi["REQUEST_METHOD"] = json_request["method"];
-			envCgi["SCRIPT_NAME"] = path_file;
+
 			envCgi["SERVER_NAME"] = server->serverName;
 			envCgi["SERVER_PORT"] = server->port;
 			envCgi["SERVER_PROTOCOL"] = "HTTP/1.1";
 			envCgi["SERVER_SOFTWARE"] = "La Femme Nikita 0.1";
+
+			envCgi["REQUEST_METHOD"] = json_request["method"];
+			envCgi["CONTENT_LENGTH"] = std::to_string(json_request["body"].size());
+			envCgi["CONTENT_TYPE"] = json_request["Content-Type"];
+
+			envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
+			envCgi["PATH_TRANSLATED"] = "";
+
+			/*
+			envCgi["REMOTE_ADDR"] = addr;
+			//envCgi["REMOTE_HOST"] = "";		//delete
+			//envCgi["REMOTE_IDENT"] = "";	//delete
+			//envCgi["REMOTE_USER"] = "";		//delete
+			*/
+			//envCgi["SCRIPT_NAME"] = "./test.bla";
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver";
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/";
+			//envCgi["PATH_INFO"] = "/YoupiBanane/youpi.bla";
+			//envCgi["PATH_INFO"] = "~/ft_webserver/cgi_tester";
 			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
-			envCgi["PATH_INFO"] = interpreter;
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver";
+			//envCgi["PATH_INFO"] = "/directory/youpi.bla";
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
+			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver";
+			//envCgi["PATH_INFO"] = interpreter;
 			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/check_tester/YoupiBanane/youpi.bla";
 			//envCgi["PATH_INFO"] = "";
 		}
@@ -616,86 +680,13 @@ class	Client
 			return (200);
 		}
 //CGI__________________________________________________________________________
-		int		cgi_write(int fd)
+		int		cgi_header_body()
 		{
-			std::cout << "cgi write\n";
-			std::cout << json_request["body"].size() << std::endl;
+			print_debug("cgi header body");
 
-			long    bytes(0);
-
-
-			/*
-			if (json_request["body"].size() > 300)
-				json_request["body"].erase(300);
-
-			bytes = write(fd, json_request["body"].c_str(),
-						json_request["body"].size());
-						*/
-
-			bytes = write(fd, json_request["body"].c_str(), 8192);
-			/*
-			bytes = write(fd, json_request["body"].c_str(), 
-					json_request["body"].size());
-					*/
-
-			std::cout << "bytes " << bytes << std::endl;
-
-			json_request["body"].erase(0, bytes);
-
-			std::cout << "body_ " << json_request["body"].size() << std::endl;
-
-			while (!json_request["body"].empty())
-			{
-				std::cout << "while write " << bytes << std::endl;
-				std::cout << "size " << json_request["body"].size() << std::endl;
-
-				bytes = write(fd, json_request["body"].c_str(), 8192);
-				/*
-				bytes = write(fd, json_request["body"].c_str(), 
-						json_request["body"].size());
-						*/
-
-				if (bytes < 0)
-					std::cout << "bytessss -1\n";
-
-				json_request["body"].erase(0, bytes);
-				//bytes = write(fd, json_request["body"].c_str(),
-				//		json_request["body"].size());
-			}
-
-			/*
-			bytes = write(fd, json_request["body"].c_str(), 8192);
-			json_request["body"].erase(0, bytes);
-
-			while (!json_request["body"].empty())
-			{
-				sleep(1);
-				std::cout << "while write " << bytes << std::endl;
-				std::cout << "size " << json_request["body"].size() << std::endl;
-
-				bytes = write(1, json_request["body"].c_str(), 8192);
-				if (bytes < 0)
-					std::cout << "bytessss -1\n";
-				json_request["body"].erase(0, bytes);
-				//bytes = write(fd, json_request["body"].c_str(),
-				//		json_request["body"].size());
-			}
-			*/
-
-
-			if (bytes < 0)
-				return (500);
-
-			std::cout << "ehd cgi write\n";
-			return (200);
-		}
-//CGI__________________________________________________________________________
-		void	cgi_header_body()
-		{
-			std::map<std::string, std::string>::iterator	it;
-			std::map<std::string, std::string>				m;
-			int												found;
-			int												ofset;
+			int			found;
+			int			ofset;
+			int			status_code(200);
 
 			ofset = 4;
 			found = body.find("\r\n\r\n");
@@ -705,43 +696,51 @@ class	Client
 				found = body.find("\n\n");
 			}
 			if (found == std::string::npos)
-				return;
+				return (200);
 
-			m = cgi_parser_header(body.substr(0, found));
-			for (it = m.begin(); it != m.end(); ++it)
-				responseHeader[(*it).first] = (*it).second;
-
+			status_code = cgi_parser_header(body.substr(0, found));
 			body.erase(0, found + ofset);
+			return (status_code);
 		}
 //CGI__________________________________________________________________________
-		std::map<std::string, std::string>	cgi_parser_header(std::string str)
+		int		cgi_parser_header(std::string str)
 		{
-			std::map<std::string, std::string>	cgi_head;
-			std::map<std::string, std::string>	cgi_status;
-			size_t								start(0);
-			size_t								end;
-			std::string							tmp;
+			print_debug("cgi parser header");
+			std::cout << "+++++++++++++++++++++++++++++++++\n";
+			std::cout << str << std::endl;
+			std::cout << "+++++++++++++++++++++++++++++++++\n";
 
-			end = str.find("\n", start) + 1;
-			if (end != std::string::npos)
+			size_t									start(0);
+			size_t									end(0);
+			std::string								tmp;
+			int										status_code(200);
+			std::pair<std::string, std::string>		pr;
+
+			while (1)
 			{
-				tmp = str.substr(start, end - start - 1);
+				start = str.find_first_not_of("\r\n", end);
+				if (start == std::string::npos)
+					return (status_code);
 
-				if (tmp.find("HTTP", 0, 4) != std::string::npos)
-				{
-					cgi_status = cgi_parser_header_one(tmp);
-					cgi_head.insert(cgi_status.begin(), --(cgi_status.end()));
-				}
+				end = str.find("\r\n", start);
+				if (end == std::string::npos)
+					end = str.find("\n", start);
+
+				if (end == std::string::npos)
+					tmp = str.substr(start);
+				else
+					tmp = str.substr(start, end - start);
 
 				if (!tmp.empty())
-					cgi_head.insert(return_key_val(tmp));
-
-				start = end + 1;
-				end = request.find("\n", start);
+				{
+					pr = return_key_val(tmp);
+					if (pr.first == "Status")
+						status_code = atoi(pr.second.substr(0, 3).c_str());
+					else
+						responseHeader[pr.first] = pr.second;
+				}
 			}
-			cgi_head.insert(return_key_val(str));
-
-			return (cgi_head);
+			return (status_code);
 		}
 //CGI__________________________________________________________________________
 		std::map<std::string, std::string>
@@ -859,6 +858,7 @@ class	Client
 		{
 			path_file = json_request["request_target"];
 
+			envCgi["QUERY_STRING"] = "/";
 			int	found = path_file.find('?');
 			if (std::string::npos != found)
 			{

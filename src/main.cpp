@@ -79,7 +79,8 @@ int	main(int argc, char **argv)
 	server1.errorPage[404] = "www/404.html";
 
 	loc.rule = "/";
-	loc.root = "check_tester/YoupiBanane";
+	loc.root = "YoupiBanane";
+	//loc.root = ".";
 	loc.index = "youpi.bad_extension";
 	loc.accessMethods.clear();
 	loc.accessMethods.push_back("GET");
@@ -87,7 +88,7 @@ int	main(int argc, char **argv)
 
 	loc.clear();
 	loc.rule = "/put_test";
-	loc.root = "check_tester";
+	loc.root = ".";
 	loc.accessMethods.clear();
 	loc.accessMethods.push_back("PUT");
 	server1.location.push_back(loc);
@@ -103,7 +104,7 @@ int	main(int argc, char **argv)
 
 	loc.clear();
 	loc.rule = "/post_body";
-	loc.root = "check_tester";
+	loc.root = "";
 	loc.clientMaxBodySize = 100;
 	loc.accessMethods.clear();
 	loc.accessMethods.push_back("POST");
@@ -111,7 +112,7 @@ int	main(int argc, char **argv)
 
 	loc.clear();
 	loc.rule = "/directory";
-	loc.root = "check_tester/YoupiBanane";
+	loc.root = "YoupiBanane";
 	loc.index = "youpi.bad_extension";
 	loc.accessMethods.clear();
 	loc.accessMethods.push_back("GET");

@@ -399,6 +399,7 @@ class	Webserver
 				{
 					if (client.chunked == 1)
 					{
+						std::cout << "chunked == 1\n";
 						/*
 						found = client.request.find_first_not_of("\r\n");
 						if (found != std::string::npos)
@@ -408,8 +409,9 @@ class	Webserver
 						found = client.request.find("\r\n");
 						if (found != std::string::npos)
 						{
+							std::cout << "find rn\n";
 							client.readByte = base16(client.request.substr(0, found));
-							//std::cout << "chunk=" << client.readByte << std::endl;
+							std::cout << "chunk=" << client.readByte << std::endl;
 							if (client.readByte > 0)
 							{
 								client.chunked = 2;
@@ -525,8 +527,8 @@ class	Webserver
 			}
 			client.response_total();
 
-			//std::cout << client.header << std::endl;
-			std::cout << client.response << std::endl;
+			std::cout << client.header << std::endl;
+			//std::cout << client.response << std::endl;
 
 			//отправка_данных_клиенту__________________________________________
 			writeSocket(client);
