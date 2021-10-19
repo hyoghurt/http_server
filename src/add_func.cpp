@@ -45,6 +45,25 @@ int		check_dir_or_file(const std::string& name_file)
 		return (1);
 	return (0);
 }
+
+std::string		convert_base16_to_str(const size_t& n)
+{
+	std::stringstream	ss;
+	std::string			str;
+
+	ss << std::hex << n;
+	ss >> str;
+
+	return (str);
+}
+
+size_t			convert_str_to_base16(const std::string& str)
+{
+	size_t		n;
+
+	std::istringstream(str) >> std::hex >> n;
+	return (n);
+}
 /*
 void			debag_pring_request(const int& fd_client, const std::string& str)
 {

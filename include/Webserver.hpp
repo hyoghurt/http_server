@@ -312,22 +312,20 @@ class	Webserver
 
 				bytes = 0;
 
-				//данные_для_отправки__________________________________________
-				if ((*it_client).flag && FD_ISSET(socket_client, &writefds))
-					bytes = writeSocket(*it_client);
-
 				//данные_для_чтения____________________________________________
-				else if (FD_ISSET(socket_client, &readfds))
+				if (FD_ISSET(socket_client, &readfds))
 					bytes = readSocket(*it_client);
 
-				//закрытие_клиента_____________________________________________
-				if (bytes == -1 || checkCloseClient(*it_client))
-				{
+				//данные_для_отправки__________________________________________
+				//if ((*it_client).flag == 1 || FD_ISSET(socket_client, &writefds))
+				if ((*it_client).flag)
+					bytes = writeSocket(*it_client);
 
-					std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
-					(*it_client).debug_show_map((*it_client).json_request);
-					std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
-					
+
+				//закрытие_клиента_____________________________________________
+				//if (bytes == -1 || checkCloseClient(*it_client))
+				if (checkCloseClient(*it_client))
+				{
 					std::cout << "bytes=[" << bytes << "]check=[" << checkCloseClient(*it_client) << "]" << std::endl;
 
 					(*it_client).debug_info("close socket");
@@ -339,13 +337,30 @@ class	Webserver
 				++it_client;
 			}
 		}
-
-		size_t		base16(const std::string& str)
+//READ_SOCKET__________________________________________________________________
+		void	erase_header_request(Client& client)
 		{
-			size_t		n;
+			std::map<std::string, std::string>::iterator	it;
+			size_t											found;
 
-			std::istringstream(str) >> std::hex >> n;
-			return (n);
+			found = client.request.find("\r\n\r\n");
+
+			if (found != std::string::npos)
+			{
+				std::cout << "----------------------------\n";
+				std::cout << client.request << std::endl;
+				std::cout << "----------------------------\n";
+				client.create_json_request_header(client.request.substr(0, found));
+				client.request.erase(0, found + 4);
+
+				it = client.json_request.find("Content-Length");
+				if (it != client.json_request.end())
+					client.readByte = atoi((*it).second.c_str());
+
+				it = client.json_request.find("Transfer-Encoding");
+				if (it != client.json_request.end() && (*it).second == "chunked")
+					client.chunked = 1;
+			}
 		}
 //READ_SOCKET__________________________________________________________________
 		int		readSocket(Client& client)
@@ -361,57 +376,21 @@ class	Webserver
 
 			if (bytes > 0)
 			{
-				client.setTimeStart();
-
 				//client.debug_info("get bytes: " + std::to_string(bytes));
-
-				client.buf[bytes] = '\0';
-				client.request.append(client.buf);
+				client.setTimeStart();
+				client.request.append(client.buf, bytes);
 
 				if (client.readByte == 0)
-				{
-					found = client.request.find("\r\n\r\n");
-
-					if (found != std::string::npos)
-					{
-						std::cout << client.request << std::endl << std::endl;
-
-						client.create_json_request_header(client.request.substr(0, found));
-						client.request.erase(0, found + 4);
-
-						found = client.request.find_first_not_of("\r\n");
-						if (found != std::string::npos)
-							client.request.erase(0, found);
-
-						it = client.json_request.find("Content-Length");
-						if (it != client.json_request.end())
-							client.readByte = atoi((*it).second.c_str());
-
-						it = client.json_request.find("Transfer-Encoding");
-						if (it != client.json_request.end() && (*it).second == "chunked")
-						{
-							std::cout << "chunked TRUE\n";
-							client.chunked = 1;
-						}
-					}
-				}
+					erase_header_request(client);
 				while (client.chunked > 0)
 				{
 					if (client.chunked == 1)
 					{
-						std::cout << "chunked == 1\n";
-						/*
-						found = client.request.find_first_not_of("\r\n");
-						if (found != std::string::npos)
-							client.request.erase(0, found);
-							*/
-
 						found = client.request.find("\r\n");
 						if (found != std::string::npos)
 						{
-							std::cout << "find rn\n";
-							client.readByte = base16(client.request.substr(0, found));
-							std::cout << "chunk=" << client.readByte << std::endl;
+							client.readByte = convert_str_to_base16(client.request.substr(0, found));
+
 							if (client.readByte > 0)
 							{
 								client.chunked = 2;
@@ -420,7 +399,6 @@ class	Webserver
 							else
 							{
 								client.chunked = 0;
-								client.request = client.str_chunked;
 								client.readByte = client.request.size();
 							}
 						}
@@ -429,11 +407,12 @@ class	Webserver
 							break ;
 						}
 					}
+
 					if (client.chunked == 2)
 					{
 						if (client.request.size() >= client.readByte + 2)
 						{
-							client.str_chunked += client.request.substr(0, client.readByte);
+							client.json_request["body"] += client.request.substr(0, client.readByte);
 							client.request.erase(0, client.readByte + 2);
 							client.chunked = 1;
 						}
@@ -443,26 +422,19 @@ class	Webserver
 						}
 					}
 				}
-				/*
-				if (client.json_request.empty() && client.request.size() > 10000)
-				{
-					std::cout << "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheererere" << std::endl;
-					create_response(client, 413);
-					return (-1);
-				}
-				*/
+
 				//получили_данные_полностью____________________________________
 				if (client.chunked == 0 && client.request.size() == client.readByte)
 				{
-
 					client.readByte = 0;
-					client.json_request["body"] = client.request;
+
+					if (client.json_request.find("Content-Length") != client.json_request.end())
+						client.json_request["body"] = client.request;
 
 					std::cout << "----------------------------------------" << std::endl;
 					std::cout << "BODY SIZE = " << client.json_request["body"].size() << std::endl;
 					std::cout << "-----------------------------------------" << std::endl;
 
-					//создание_ответа__________________________________________
 					create_response(client, max_header);
 					//закрытие_сокета_чтения___________________________________
 					//shutdown(client.socket, 0);
@@ -470,18 +442,151 @@ class	Webserver
 			}
 			return (bytes);
 		}
+
+		int	check_chunk_header_response(Client& client)
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			it = client.responseHeader.find("Transfer-Encoding");
+			if (it != client.responseHeader.end() && (*it).second == "chunked")
+				return (1);
+			return (0);
+
+		}
 //WRITE_SOCKET_________________________________________________________________
 		int		writeSocket(Client& client)
 		{
-			client.flag = 1;
+			std::string		tmp;
+			int				bytes;
 
+			std::cout << "---------------------------------\n";
+			std::cout << client.response.size() << std::endl;
+			std::cout << "---------------------------------\n";
+
+			/*
+			if (client.response.size() > 1000)
+			{
+				tmp = client.response.substr(0, 1000);
+				bytes = send(client.socket, tmp.c_str(), tmp.size(), 0);
+				if (bytes > 0)
+				{
+					client.response.erase(0, bytes);
+				}
+			}
+			else if (!client.response.empty())
+			{
+				tmp = client.response.substr();
+				bytes = send(client.socket, tmp.c_str(), tmp.size(), 0);
+				if (bytes > 0)
+				{
+					client.response.erase(0, bytes);
+				}
+			}
+
+			if (client.response.empty())
+			{
+				client.flag = 0;
+			}
+			*/
+
+			bytes = send(client.socket, client.response.c_str(),
+					client.response.size(), 0);
+
+			client.setTimeStart();
+			if (bytes > 0)
+			{
+				client.response.erase(0, bytes);
+				client.debug_info("write bytes: " + std::to_string(bytes)
+					+ " ost bytes:" + std::to_string(client.response.size()));
+
+				if (client.response.empty())
+				{
+					client.flag = 0;
+				}
+			}
+
+			client.debug_info("write bytes response: " + std::to_string(bytes)
+					+ " ost bytes:" + std::to_string(client.response.size()));
+
+				/*
+			if (check_chunk_header_response(client))
+			{
+				std::cout << "--HEADER-------------------------\n";
+				std::cout << client.header.size() << std::endl;
+				std::cout << "---------------------------------\n";
+				std::cout << "--BODY---------------------------\n";
+				std::cout << client.body.size() << std::endl;
+				std::cout << "---------------------------------\n";
+
+				if (!client.header.empty())
+				{
+					bytes = send(client.socket, client.header.c_str(), client.header.size(), 0);
+					if (bytes > 0)
+						client.header.erase(0, bytes);
+
+					client.debug_info("write bytes header: " + std::to_string(bytes)
+						+ " ost bytes:" + std::to_string(client.header.size()));
+				}
+				else
+				{
+					bytes = send(client.socket, client.body.c_str(), client.body.size(), 0);
+					if (bytes > 0)
+						client.body.erase(0, bytes);
+
+					client.debug_info("write bytes body: " + std::to_string(bytes)
+						+ " ost bytes:" + std::to_string(client.body.size()));
+				}
+			}
+			else
+			{
+				bytes = send(client.socket, client.response.c_str(),
+						client.response.size(), 0);
+
+				if (bytes > 0)
+					client.response.erase(0, bytes);
+
+				if (client.response.empty())
+				{
+					client.flag = 0;
+				}
+				client.debug_info("write bytes response: " + std::to_string(bytes)
+						+ " ost bytes:" + std::to_string(client.response.size()));
+			}
+				*/
+
+			client.setTimeStart();
+			return (bytes);
+
+			/*
+			if (client.response.size() > 16384)
+			{
+				tmp = client.response.substr(0, 16384);
+				bytes = send(client.socket, tmp.c_str(), tmp.size(), 0);
+				if (bytes > 0)
+				{
+					client.response.erase(0, bytes);
+				}
+			}
+			else if (!client.response.empty())
+			{
+				tmp = client.response.substr();
+				bytes = send(client.socket, tmp.c_str(), tmp.size(), 0);
+				if (bytes > 0)
+				{
+					client.response.erase(0, bytes);
+				}
+			}
+			*/
+			/*
 			//отправка_данных_клиенту__________________________________________
 			int	bytes = send(client.socket, client.response.c_str(),
 					client.response.size(), 0);
 
+			client.setTimeStart();
 			if (bytes > 0)
 			{
-				client.setTimeStart();
+
+				//client.setTimeStart();
 				client.response.erase(0, bytes);
 				client.debug_info("write bytes: " + std::to_string(bytes)
 					+ " ost bytes:" + std::to_string(client.response.size()));
@@ -491,12 +596,10 @@ class	Webserver
 					client.flag = 0;
 				}
 				//закрытие_сокета_отправкиi____________________________________
-				/*
 				if (client.response.empty())
 					shutdown(client.socket, 1);
-					*/
 			}
-			return (bytes);
+			*/
 		}
 //RESPONSE_____________________________________________________________________
 		void	create_response(Client& client, const int& max_header)
@@ -505,6 +608,9 @@ class	Webserver
 
 			int				status_code;
 			std::string		path_file;
+
+			client.responseHeader.clear();
+			client.body.clear();
 
 			//client.debug_show_map(client.json_request);
 
@@ -529,8 +635,11 @@ class	Webserver
 
 			std::cout << client.header << std::endl;
 			//std::cout << client.response << std::endl;
+			//std::string		check(client.response, 400);
+			//std::cout << check << std::endl;
 
 			//отправка_данных_клиенту__________________________________________
+			client.flag = 1;
 			writeSocket(client);
 		}
 //RESPONSE_____________________________________________________________________
@@ -799,6 +908,20 @@ class	Webserver
 		int		checkCloseClient(Client& client)
 		{
 			time_t		get_time;
+
+			if (!client.response.empty())
+				return (0);
+			/*
+			if (check_chunk_header_response(client))
+			{
+				std::cout << RED << "CLOSE check chunk" << RESET << std::endl;
+				if (!client.body.empty() || !client.header.empty())
+				{
+					std::cout << RED << "empty header and body" << RESET << std::endl;
+					return (0);
+				}
+			}
+			*/
 
 			if (client.responseHeader["Connection"] == "close")
 				return (1);
