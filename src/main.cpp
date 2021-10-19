@@ -73,7 +73,7 @@ int	main(int argc, char **argv)
 	Location	loc;
 
 	server1.ipAddress = "127.0.0.1";
-	server1.port = "9000";
+	server1.port = "9080";
 	server1.serverName = "test_1.ru";
 	server1.errorPage[400] = "www/400.html";
 	server1.errorPage[404] = "www/404.html";
@@ -104,7 +104,7 @@ int	main(int argc, char **argv)
 
 	loc.clear();
 	loc.rule = "/post_body";
-	loc.root = "";
+	loc.root = ".";
 	loc.clientMaxBodySize = 100;
 	loc.accessMethods.clear();
 	loc.accessMethods.push_back("POST");

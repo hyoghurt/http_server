@@ -2,7 +2,7 @@
 # define CLIENT_HPP
 
 # define BUF_SIZE 1024
-# define TIME_KEEP_ALIVE 15
+# define TIME_KEEP_ALIVE 50
 
 # include <iostream>
 # include <dirent.h> //opendir
@@ -255,6 +255,10 @@ class	Client
 		{
 			print_debug("F post file: " + path_file);
 
+			int	f = check_dir_or_file(path_file);
+			if (f == 1)
+				return (404);
+
 			if (json_request["body"].size() == 0)
 				return (204);
 
@@ -329,6 +333,12 @@ class	Client
 		int		cgi_run()
 		{
 			print_debug("F run cgi");
+
+			/*
+			int		f = check_dir_or_file(path_file);
+			if (f == -1)
+				return (404);
+			*/
 
 			body.clear();
 			interpreter = location->cgiPass;
@@ -418,12 +428,10 @@ class	Client
 			int			w(0);
 			char		bu[20001];
 
-			std::cout << "_BODY_SIZE___________________________________" << std::endl;
-			std::cout << json_request["body"].size() << std::endl;
-			std::cout << "_____________________________________________" << std::endl;
-
 			int			f_w(1);
 			int			f_r(1);
+			int			found;
+			int			ofset;
 
 			readByte = 0;
 
@@ -449,7 +457,8 @@ class	Client
 							json_request["body"].erase(0, bytes);
 						}
 					}
-					else
+
+					if (json_request["body"].empty())
 					{
 						bytes = write(fd_in_pipe[1], "\0", 1);
 						if (bytes > 0)
@@ -457,18 +466,13 @@ class	Client
 							f_w = 0;
 						}
 					}
-					//std::cout << "bytes write: " << bytes << " ost bytes: " << json_request["body"].size() << '\n';
 				}
-
 
 				bytes = read(fd_out_pipe[0], bu, 20000);
 				if (bytes > 0)
 				{
 					if (readByte == 0)
 					{
-						int			found;
-						int			ofset;
-
 						body.append(bu, bytes);
 
 						ofset = 4;
@@ -498,7 +502,7 @@ class	Client
 							}
 						}
 					}
-					else if (check_chunk_header_request() && bytes > 0)
+					else if (check_chunk_header_request())
 					{
 						tmp.assign(bu, bytes);
 
@@ -516,16 +520,15 @@ class	Client
 				if (bytes < 20000 && json_request["body"].size() == 0)
 				{
 					if (check_chunk_header_request())
-					{
 						body.append("0\r\n\r\n");
-					}
 					f_r = 0;
 				}
-
 			}
 
 			close(fd_in_pipe[1]);
 			close(fd_out_pipe[0]);
+
+			readByte = 0;
 
 			wait(&status);
 
@@ -568,7 +571,6 @@ class	Client
 			std::cout << "status_code= " << status_code << std::endl;
 			if (status_code == 200 && check_chunk_header_request())
 				responseHeader["Transfer-Encoding"] = "chunked";
-
 			std::cout << "BODY_SIZE=" << body.size() << std::endl;
 
 			return (status_code);
@@ -662,8 +664,9 @@ class	Client
 		{
 			print_debug("F cgi env");
 
-			envCgi["AUTH_TYPE"] = "basic";							//delete
+			//envCgi["AUTH_TYPE"] = "basic";							//delete
 			envCgi["GATEWAY_INTERFACE"] = "CGI/0.1";
+			envCgi["REMOTE_ADDR"] = addr;
 
 			envCgi["SERVER_NAME"] = server->serverName;
 			envCgi["SERVER_PORT"] = server->port;
@@ -677,31 +680,17 @@ class	Client
 			envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
 			envCgi["PATH_TRANSLATED"] = "";
 
-
 			std::map<std::string, std::string>::iterator	it;
 			it = json_request.find("X-Secret-Header-For-Test");
 			if (it != json_request.end())
 				envCgi["HTTP_X-Secret-Header-For-Test"] = (*it).second;
 
 			/*
-			envCgi["REMOTE_ADDR"] = addr;
 			//envCgi["REMOTE_HOST"] = "";		//delete
 			//envCgi["REMOTE_IDENT"] = "";	//delete
 			//envCgi["REMOTE_USER"] = "";		//delete
 			*/
 			//envCgi["SCRIPT_NAME"] = "./test.bla";
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver";
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/";
-			//envCgi["PATH_INFO"] = "/YoupiBanane/youpi.bla";
-			//envCgi["PATH_INFO"] = "~/ft_webserver/cgi_tester";
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver";
-			//envCgi["PATH_INFO"] = "/directory/youpi.bla";
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/cgi_tester";
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver";
-			//envCgi["PATH_INFO"] = interpreter;
-			//envCgi["PATH_INFO"] = "/Users/hyoghurt/ft_webserver/check_tester/YoupiBanane/youpi.bla";
-			//envCgi["PATH_INFO"] = "";
 		}
 //CGI__________________________________________________________________________
 		int		cgi_read(int fd)
@@ -723,33 +712,10 @@ class	Client
 			return (200);
 		}
 //CGI__________________________________________________________________________
-		int		cgi_header_body()
-		{
-			print_debug("cgi header body");
-
-			int			found;
-			int			ofset;
-			int			status_code(200);
-
-			ofset = 4;
-			found = body.find("\r\n\r\n");
-			if (found == std::string::npos)
-			{
-				ofset = 2;
-				found = body.find("\n\n");
-			}
-			if (found == std::string::npos)
-				return (200);
-
-			status_code = cgi_parser_header(body.substr(0, found));
-			body.erase(0, found + ofset);
-			return (status_code);
-		}
-//CGI__________________________________________________________________________
 		int		cgi_parser_header(std::string str)
 		{
 			print_debug("cgi parser header");
-			std::cout << "+++++++++++++++++++++++++++++++++\n";
+			std::cout << "+CGI PARSER HEADER+++++++++++++++\n";
 			std::cout << str << std::endl;
 			std::cout << "+++++++++++++++++++++++++++++++++\n";
 
@@ -822,8 +788,8 @@ class	Client
 			if (responseHeader["Connection"] == "close")
 				return ;
 			responseHeader["Connection"] = "Keep-Alive";
-			//responseHeader["Keep-Alive"] = "timeout="
-				//+ std::to_string(TIME_KEEP_ALIVE);
+			responseHeader["Keep-Alive"] = "timeout="
+					+ std::to_string(TIME_KEEP_ALIVE);
 		}
 //RESPONSE_HEADER______________________________________________________________
 		void	response_total(void)
@@ -858,8 +824,6 @@ class	Client
 				response = header + body;
 
 			body.clear();
-			header.clear();
-
 			json_request.clear();
 		}
 //ADD__________________________________________________________________________

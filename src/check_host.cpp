@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 
 int check_host(const std::string &host) {
 
@@ -30,31 +31,71 @@ int check_host(const std::string &host) {
    return 0;
 }
 
-
-str = "  abc	jd	l ";
-
-std::vector<std::string>	func(const std::string& str)
+std::vector<std::string>	split_by_space(const std::string& str)
 {
-	std::vector<std::string>		str;
+   std::vector<std::string>		res;
+   std::string const delims =  " \t";
 
+   size_t begin, pos = 0;
+   while ((begin = str.find_first_not_of(delims, pos)) != std::string::npos)
+   {
+      pos = str.find_first_of(delims, begin + 1);
+      res.push_back(str.substr(begin, pos - begin));
+   }
+   return res;
 }
 
 
 int	main()
 {
-	std::cout << check_host("122.0.0.1:9000") << std::endl;
-	std::cout << check_host("122.0.0.1:-1") << std::endl;
-	std::cout << check_host("") << std::endl;
-	std::cout << check_host("122.0.0.1:a") << std::endl;
-	std::cout << check_host("256.0.0.1:3") << std::endl;
-	std::cout << check_host("122.256.0.1:3") << std::endl;
-	std::cout << check_host("122.2.256.1:3") << std::endl;
-	std::cout << check_host("122.2.2.256:3") << std::endl;
-	std::cout << check_host("122a.2.2.0:3") << std::endl;
-	std::cout << check_host("122.2.2.0:") << std::endl;
-	std::cout << check_host("122.2.2.0.23:34") << std::endl;
-	std::cout << check_host("122.2.2.0.23") << std::endl;
-	std::cout << check_host("122.0.23:34") << std::endl;
-	std::cout << check_host("a.2.2.0.23") << std::endl;
-	std::cout << check_host("122.2.2.:23") << std::endl;
+	std::vector<std::string>			v;
+	std::vector<std::string>::iterator	it;
+	
+	v = split_by_space("ab ");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space("	 ");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space("a bc c	 ");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space("a");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space("");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space(" a b ");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space("a b ");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
+
+	v = split_by_space(" a b");
+
+	for (it = v.begin(); it != v.end(); ++it)
+		std::cout << "[" << *it << "]\n";
+	std::cout << "----------------------\n";
 }
