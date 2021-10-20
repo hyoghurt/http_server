@@ -1,7 +1,7 @@
 #include "add_func.hpp"
 
 void	print_debug(const std::string& str)
-{ std::cout << BLUE << str << RESET << '\n'; }
+{ return; std::cout << BLUE << str << RESET << '\n'; }
 
 void	print_info(const std::string& str)
 { std::cout << YELLOW << str << RESET << '\n'; }

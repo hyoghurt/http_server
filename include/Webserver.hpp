@@ -173,7 +173,7 @@ class	Webserver
 			}
 
 			//переводим сокет в слушаюший режим________________________________
-			if (-1 == listen(socketListen, 5))
+			if (-1 == listen(socketListen, 128))
 			{
 				print_error("listen");
 				return (-1);
@@ -260,9 +260,9 @@ class	Webserver
 
 			for (icl = client.begin(); icl != client.end(); ++icl)
 			{
-				//FD_SET((*icl).getSocket(), &writefds);
+				FD_SET((*icl).getSocket(), &writefds);
 				//else
-				//if ((*icl).flag == 0)
+				if ((*icl).flag == 0)
 					FD_SET((*icl).getSocket(), &readfds);
 
 				max_d = std::max((*icl).getSocket(), max_d);
@@ -313,11 +313,10 @@ class	Webserver
 					bytes = writeSocket(*it_client);
 
 				//данные_для_чтения____________________________________________
-				else if (FD_ISSET(socket_client, &readfds))
+				if (FD_ISSET(socket_client, &readfds))
 					bytes = readSocket(*it_client);
 
 				//закрытие_клиента_____________________________________________
-				/*
 				if (bytes < 0 || checkCloseClient(*it_client))
 				{
 					std::cout << "bytes=[" << bytes << "]check=[" << checkCloseClient(*it_client) << "]" << std::endl;
@@ -328,7 +327,6 @@ class	Webserver
 
 					continue;
 				}
-				*/
 				++it_client;
 			}
 		}
@@ -337,8 +335,6 @@ class	Webserver
 		{
 			//чтение_данных_от_клиента_________________________________________
 			int	bytes = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
-
-			std::cout << "read_____________" << bytes << std::endl;
 
 			if (bytes > 0)
 			{
@@ -359,16 +355,17 @@ class	Webserver
 					if (client.json_request.find("Content-Length") != client.json_request.end())
 						client.json_request["body"] = client.request;
 
+					/*
 					std::cout << "-START-RESPONSE-CREATE-------------------" << std::endl;
 					std::cout << "BODY SIZE = " << client.json_request["body"].size() << std::endl;
 					std::cout << "-----------------------------------------" << std::endl;
+					*/
 
 					create_response(client, 0);
 					//закрытие_сокета_чтения___________________________________
 					//shutdown(client.socket, 0);
 				}
 			}
-			shutdown(client.socket, 0);
 			return (bytes);
 		}
 //READ_SOCKET__________________________________________________________________
@@ -381,13 +378,11 @@ class	Webserver
 
 			if (found != std::string::npos)
 			{
+				/*
+				client.debug_info("REQUEST");
 				std::cout << "----------------------------\n";
 				std::cout << client.request << std::endl;
 				std::cout << "----------------------------\n";
-
-				/*
-				client.responseHeader.clear();
-				client.flag = 0;
 				*/
 
 				client.create_json_request_header(client.request.substr(0, found));
@@ -415,17 +410,8 @@ class	Webserver
 					if (found != std::string::npos)
 					{
 						client.readByte = convert_str_to_base16(client.request.substr(0, found));
-
-						if (client.readByte > 0)
-						{
-							client.chunked = 2;
-							client.request.erase(0, found + 2);
-						}
-						else
-						{
-							client.chunked = 0;
-							client.readByte = client.request.size();
-						}
+						client.chunked = 2;
+						client.request.erase(0, found + 2);
 					}
 					else
 					{
@@ -439,7 +425,11 @@ class	Webserver
 					{
 						client.json_request["body"] += client.request.substr(0, client.readByte);
 						client.request.erase(0, client.readByte + 2);
-						client.chunked = 1;
+
+						if (client.readByte == 0)
+							client.chunked = 0;
+						else
+							client.chunked = 1;
 					}
 					else
 					{
@@ -504,11 +494,16 @@ class	Webserver
 
 					client.response.erase(0, bytes);
 					if (client.response.empty())
+					{
+						client.debug_info("write end");
 						client.flag = 0;
+					}
 				}
 
+				/*
 				client.debug_info("write bytes: " + std::to_string(bytes)
 						+ " ost bytes:" + std::to_string(client.response.size()));
+						*/
 			}
 
 			return (bytes);
@@ -523,7 +518,9 @@ class	Webserver
 
 			client.responseHeader.clear();
 
-			//client.debug_show_map(client.json_request);
+			std::cout << "____REQUEST_HEADER________\n";
+			client.debug_show_map(client.json_request);
+			std::cout << "__________________________\n";
 
 			//выполнение_запроса_______________________________________________
 			if (max_header == 413)
@@ -546,8 +543,6 @@ class	Webserver
 
 			std::cout << "____TOTAL HEADER__________\n";
 			std::cout << client.header << std::endl;
-			std::cout << "____TOTAL_SIZE____________\n";
-			std::cout << client.response.size() << std::endl;
 			std::cout << "__________________________\n";
 
 			client.header.clear();
@@ -772,8 +767,10 @@ class	Webserver
 			time_t											get_time;
 			std::map<std::string, std::string>::iterator	it;
 
+			/*
 			if (client.flag)
 				return (0);
+				*/
 
 			it = client.responseHeader.find("Connection");
 			if (it != client.responseHeader.end() && (*it).second == "close")

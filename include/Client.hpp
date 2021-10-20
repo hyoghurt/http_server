@@ -1,8 +1,8 @@
 #ifndef CLIENT_HPP
 # define CLIENT_HPP
 
-# define BUF_SIZE 1024
-# define TIME_KEEP_ALIVE 0
+# define BUF_SIZE 10000
+# define TIME_KEEP_ALIVE 3
 
 # include <iostream>
 # include <dirent.h> //opendir
@@ -169,9 +169,7 @@ class	Client
 
 			int				length;
 			char*			buffer;
-			int				status_code;
-
-			status_code = 200;
+			int				status_code(200);
 
 			std::ifstream	is (str, std::ifstream::binary);
 
@@ -194,22 +192,14 @@ class	Client
 					return (500);
 				}
 
-				debug_info("size file: " + std::to_string(length));
-
 				is.read (buffer,length);
-
 				if (is)
 				{
 					body.assign(buffer, length);
 					responseHeader_content_type(str);
-					debug_info("all characters read successfully");
 				}
 				else
-				{
 					status_code = 500;
-					debug_info("Error: read file (only "
-							+ std::to_string(is.gcount()) + " could be read)");
-				}
 
 				is.close();
 				delete [] buffer;
@@ -348,11 +338,13 @@ class	Client
 			char	**env = cgi_create_env();
 			int		status_code(500);
 
+			/*
 			std::cout << "___CGI_ARG________________________________\n";
 			debug_show_arg(arg);
 			std::cout << "___CGI_ENV________________________________\n";
 			debug_show_map(envCgi);
 			std::cout << "__________________________________________\n";
+			*/
 
 			if (arg && env)
 				status_code = cgi_fork(arg, env);
@@ -713,9 +705,6 @@ class	Client
 		int		cgi_parser_header(std::string str)
 		{
 			print_debug("cgi parser header");
-			std::cout << "+CGI PARSER HEADER+++++++++++++++\n";
-			std::cout << str << std::endl;
-			std::cout << "+++++++++++++++++++++++++++++++++\n";
 
 			size_t									start(0);
 			size_t									end(0);
@@ -849,7 +838,11 @@ class	Client
 			std::map<std::string, std::string>::iterator	it;
 
 			for (it = m.begin(); it != m.end(); ++it)
+			{
+				if ((*it).first == "body")
+					continue ;
 				std::cout << (*it).first << "=" << (*it).second << std::endl;
+			}
 		}
 
 		void	debug_show_arg(char** env)
