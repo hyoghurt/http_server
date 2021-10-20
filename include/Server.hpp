@@ -35,10 +35,10 @@ class	Server
 			return *this;
 		}
 
-		std::string			getIpAddress(void) const
+		std::string			getIpAddress() const
 		{ return this->ipAddress; }
 
-		std::string			getPort(void) const
+		std::string			getPort() const
 		{ return this->port; }
 
 		void				setIpAddress(const std::string& str)
@@ -46,6 +46,16 @@ class	Server
 
 		void				setPort(const int& port)
 		{ this->port = port; }
+
+		void				clear()
+		{
+			ipAddress = "";
+			port = "";
+			serverName = "";
+			clientMaxBodySize = -1;
+			errorPage.clear();
+			location.clear();
+		}
 
 	public:
 		std::string							ipAddress;

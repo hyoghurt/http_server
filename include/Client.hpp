@@ -2,7 +2,7 @@
 # define CLIENT_HPP
 
 # define BUF_SIZE 1024
-# define TIME_KEEP_ALIVE 50
+# define TIME_KEEP_ALIVE 0
 
 # include <iostream>
 # include <dirent.h> //opendir
@@ -52,7 +52,6 @@ class	Client
 			this->path_file = oth.path_file;
 			this->responseHeader = oth.responseHeader;
 			this->envCgi = oth.envCgi;
-			this->interpreter = oth.interpreter;
 			this->addr = oth.addr;
 			this->flag = oth.flag;
 			this->chunked = oth.chunked;
@@ -76,7 +75,7 @@ class	Client
 		{ this->socket = socket; }
 
 		void	setTimeStart(void)
-		{ ctime(&timeStart); }
+		{ time(&timeStart); }
 
 		void	setRequest(const std::string &request)
 		{ this->request = request; }
@@ -225,7 +224,7 @@ class	Client
 		{
 			size_t		found;
 
-			if (location->uploadPass)
+			if (location->rule == "/dowloads")
 				responseHeader["Content-Type"] = "application/octet-stream";
 			else
 			{
@@ -341,7 +340,6 @@ class	Client
 			*/
 
 			body.clear();
-			interpreter = location->cgiPass;
 			if (path_file[0] != '/')
 				path_file = "/" + path_file;
 			path_file = getenv("PWD") + path_file;
@@ -612,7 +610,7 @@ class	Client
 			{
 				arg = new char*[3];
 
-				arg[0] = strdup(interpreter.c_str());
+				arg[0] = strdup(location->cgiPass.c_str());
 				if (arg[0] == nullptr)
 					return (free_env(arg));
 				arg[1] = strdup(path_file.c_str());
@@ -1010,7 +1008,6 @@ class	Client
 		std::string							path_file;
 		std::map<std::string, std::string>	responseHeader;
 		std::map<std::string, std::string>	envCgi;
-		std::string							interpreter;
 		std::string							addr;
 		int									flag;
 		int									chunked;

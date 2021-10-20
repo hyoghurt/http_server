@@ -1,7 +1,7 @@
 #ifndef WEBSERVER_HPP
 # define WEBSERVER_HPP
 
-//# define TIME_KEEP_ALIVE 
+# define CONF_DEFAULT "conf.conf"
 
 # include <iostream>
 # include <vector>
@@ -15,7 +15,6 @@
 # include "Server.hpp"
 # include "Client.hpp"
 
-# include <cmath> //pow
 
 /*
  * +	check write and read -1 and 0
@@ -27,19 +26,16 @@
  * +	использовать server_name
  * +	проверить автоиндекс / в конце
  * +	подисать cgi post
+ * +	исправить тест с размером тела 100000000 и отправки его в cgi
+ * +	исправить код ответа при создании файла
  *
  *
  *
- * исправить тест с размером тела 100000000 и отправки его в cgi
- * исправить код ответа при создании файла
  * подисать cgi окружение
  * написать signal для выхода из программы
  * запустить tester
  * запустить siege
- *
- * раширение .cgi прочесть файл и найти интерпритатор
  * корректировка парсера полученного хедера (пробелы и перенос строки)
- *
  *
  * _________CURL____________________________________________________________
  * curl --response host:port:address http://host:port
@@ -72,11 +68,7 @@ class	Webserver
 	public:
 
 //CONSTRUCTOR__________________________________________________________________
-		//Webserver() : log_file("log.log")
-		Webserver()
-		{
-			find_interpreter();
-		}
+		Webserver() {}
 //COPY_________________________________________________________________________
 		Webserver(const Webserver& oth) { *this = oth; }
 //DESTRUCTOR___________________________________________________________________
@@ -99,9 +91,11 @@ class	Webserver
 			this->server = oth.server;
 			this->client = oth.client;
 			this->listenSocket = oth.listenSocket;
-			this->interpreter = oth.interpreter;
 			return *this;
 		}
+//CONF_PARSER__________________________________________________________________
+		void			debug_show_conf();
+		int				readConfigFile(const char* fileName);
 //CREATE_LISTEN_SOCKET_________________________________________________________
 		int			createSocketListen ()
 		{
@@ -266,9 +260,9 @@ class	Webserver
 
 			for (icl = client.begin(); icl != client.end(); ++icl)
 			{
-				FD_SET((*icl).getSocket(), &writefds);
+				//FD_SET((*icl).getSocket(), &writefds);
 				//else
-				if ((*icl).flag == 0)
+				//if ((*icl).flag == 0)
 					FD_SET((*icl).getSocket(), &readfds);
 
 				max_d = std::max((*icl).getSocket(), max_d);
@@ -323,6 +317,7 @@ class	Webserver
 					bytes = readSocket(*it_client);
 
 				//закрытие_клиента_____________________________________________
+				/*
 				if (bytes < 0 || checkCloseClient(*it_client))
 				{
 					std::cout << "bytes=[" << bytes << "]check=[" << checkCloseClient(*it_client) << "]" << std::endl;
@@ -333,6 +328,7 @@ class	Webserver
 
 					continue;
 				}
+				*/
 				++it_client;
 			}
 		}
@@ -341,6 +337,8 @@ class	Webserver
 		{
 			//чтение_данных_от_клиента_________________________________________
 			int	bytes = recv(client.getSocket(), client.buf, BUF_SIZE - 1, 0);
+
+			std::cout << "read_____________" << bytes << std::endl;
 
 			if (bytes > 0)
 			{
@@ -370,6 +368,7 @@ class	Webserver
 					//shutdown(client.socket, 0);
 				}
 			}
+			shutdown(client.socket, 0);
 			return (bytes);
 		}
 //READ_SOCKET__________________________________________________________________
@@ -579,9 +578,6 @@ class	Webserver
 			if (status == 301)
 				return (301);
 
-			if (client.json_request["request_target"] == "/post_body")
-				return (201);
-
 			//редирект_________________________________________________________
 			if (client.check_redirect())
 				return (client.location->return_code);
@@ -602,17 +598,10 @@ class	Webserver
 			if (client.json_request["method"] == "DELETE")
 				return (client.deleteFile());
 
-			//выполнение_загрузки______________________________________________
-			if (client.location->uploadPass)
-				return (client.get_run());
-
 			//выполнение_скачивания____________________________________________
-			if (client.location->dowloadPass)
-			{
+			if (client.location->rule == "/dowloads")
 				if (client.json_request["method"] == "GET")
 					return (client.get_run());
-				return (client.post_run());
-			}
 
 			//выполнение_CGI___________________________________________________
 			if (!client.location->cgiPass.empty())
@@ -657,6 +646,8 @@ class	Webserver
 //CONFIG_LOCATION______________________________________________________________
 		int			find_location(Client& client)
 		{
+			int		header_location(0);
+
 			client.location = nullptr;
 
 			//find_location_filename_extension(client);
@@ -678,8 +669,8 @@ class	Webserver
 						if (client.path_file[size - 1] != '/')
 						{
 							client.path_file.push_back('/');
-							client.responseHeader["Location"] = client.json_request["request_target"] + "/";
-							return (301);
+							header_location = 1;
+							//return (301);
 						}
 
 						d = check_dir_or_file(client.path_file + client.location->index);
@@ -690,10 +681,18 @@ class	Webserver
 						if (d == -1)
 						{
 							if (!client.location->autoindex)
+							{
 								client.path_file.append(client.location->index);
+								if (header_location)
+									client.responseHeader["Location"] = client.json_request["request_target"] + "/" + client.location->index;
+							}
 						}
 						if (d == 0)
+						{
 							client.path_file.append(client.location->index);
+							if (header_location)
+								client.responseHeader["Location"] = client.json_request["request_target"] + "/" + client.location->index;
+						}
 					}
 					find_location_filename_extension(client);
 				}
@@ -767,61 +766,6 @@ class	Webserver
 					client.location = tmp_loc;
 			}
 		}
-//FIND_INTERPRETER_____________________________________________________________
-		void	find_interpreter()
-		{
-			std::map<std::string, std::string>				tmp;
-			std::map<std::string, std::string>::iterator	it;
-
-			tmp[".py"]		= "python3";
-			tmp[".php"]		= "php";
-			tmp[".perl"]	= "perl";
-			tmp[".rb"]		= "ruby";
-			tmp[".rbw"]		= "ruby";
-			tmp[".sh"]		= "sh";
-
-			for (it = tmp.begin(); it != tmp.end(); ++it)
-				tmp[(*it).first] = absolutePathOfExec((*it).second);
-
-			for (it = tmp.begin(); it != tmp.end(); ++it)
-				if (!(*it).second.empty())
-					interpreter.insert(*it);
-
-			std::cout <<  YELLOW << "\nCGI: interpreter     found: " << RESET;
-			for (it = interpreter.begin(); it != interpreter.end(); ++it)
-				std::cout << " | " << (*it).first;
-			std::cout << '\n';
-
-			std::cout << YELLOW << "CGI: interpreter not found: " << RESET;
-			for (it = tmp.begin(); it != tmp.end(); ++it)
-				if ((*it).second.empty())
-					std::cout << " | " << (*it).first;
-			std::cout << '\n';
-		}
-//FIND_INTERPRETER_____________________________________________________________
-		std::string		absolutePathOfExec(const std::string& execName)
-		{
-			std::string		absolutePath;
-			std::string		token;
-			std::string		path = getenv("PATH");
-			size_t			pos = 0;
-			struct stat		st;
-		
-			if (path.empty())
-				return ("");
-		
-			while ((pos = path.find(':')) != std::string::npos)
-			{
-				token = path.substr(0, pos);
-				absolutePath = (token.append("/") + execName);
-		
-				if (stat(absolutePath.c_str(), &st) == 0)
-					return absolutePath;
-		
-				path.erase(0, pos + 1);
-			}
-			return ("");
-		}
 //CHECK_CLOSE_CLIENT___________________________________________________________
 		int		checkCloseClient(Client& client)
 		{
@@ -877,8 +821,8 @@ class	Webserver
 		std::vector<Server>					server;
 		std::vector<Client>					client;
 		std::vector<int>					listenSocket;
-		std::map<std::string, std::string>	interpreter;
-		//std::ofstream						log_file;
 };
+
+//# include "readConfigFile.cpp"
 
 #endif

@@ -64,36 +64,71 @@ size_t			convert_str_to_base16(const std::string& str)
 	std::istringstream(str) >> std::hex >> n;
 	return (n);
 }
-/*
-void			debag_pring_request(const int& fd_client, const std::string& str)
+
+std::vector<std::string>	split_by_space(const std::string& str)
 {
-	std::cout << GREEN << "________________" << fd_client << NO_C << std::endl;
-	std::cout << str << std::endl;
-	std::cout << GREEN << "________________" << NO_C << std::endl;
+   std::vector<std::string>		res;
+   std::string const delims =  " \t";
+
+   size_t begin, pos = 0;
+   while ((begin = str.find_first_not_of(delims, pos)) != std::string::npos)
+   {
+      pos = str.find_first_of(delims, begin + 1);
+      res.push_back(str.substr(begin, pos - begin));
+   }
+   return res;
 }
 
-std::string		ret_str_open(const std::string& file)
+std::string		absolutePathOfExec(const std::string& execName)
 {
-	std::stringstream my_str;
-	my_str << "lkjijk";
-	std::cout << my_str.str() << std::endl;
-	std::string			str;
-	std::string			res_str;
-	std::ifstream		ifs(file);
+	std::string		absolutePath;
+	std::string		token;
+	std::string		path = getenv("PATH");
+	size_t			pos = 0;
+	struct stat		st;
 
-	if (!ifs)
-		//write correct
-		return ("error\n");
-	while (ifs)
+	if (path.empty())
+		return ("");
+
+	while ((pos = path.find(':')) != std::string::npos)
 	{
-		getline(ifs, str);
-		res_str += str;
-		if (ifs)
-			res_str += "\n";
+		token = path.substr(0, pos);
+		absolutePath = (token.append("/") + execName);
+
+		if (stat(absolutePath.c_str(), &st) == 0)
+			return absolutePath;
+
+		path.erase(0, pos + 1);
 	}
-	ifs.close();
-	return (res_str);
+	return ("");
 }
 
+int				check_host(const std::string &host)
+{
+   int positions_after_point[5] = {0};
 
-*/
+   try {
+      //Ищем все индексы точек и двоеточия и записываем их в массив интов
+      for (int i = 0, j = 1; i != host.length(); i++) {
+         if (j < 4 && host[i] == '.') {
+            positions_after_point[j++] = i + 1;
+         }
+         else if (host[i] == ':') {
+            if (j != 4) { return 2; } //more than 4 elem
+            positions_after_point[j++] = i + 1;
+         }
+         else if (!isdigit(host[i])) { return 1; }
+      }
+
+      //Для каждого индекса делает сабстроку и переводим ее в инт
+      for (int i = 0; i < 5; i++) {
+         std::string b = host.substr(positions_after_point[i],
+                              positions_after_point[i + 1] - positions_after_point[i] - 1);
+         int res = stoi(b);
+         if (i < 4 && (res < 0 || res > 255)) { return 3; } //elem go from range
+//       std::cout << res << std::endl;
+      }
+   }
+   catch (...) { return 4; }
+   return 0;
+}

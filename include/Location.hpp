@@ -13,12 +13,9 @@ class	Location
 			root = "";
 			autoindex = false;
 			index = "index.html";
-			accessMethods.push_back("GET");
 			return_code = 0;
 			return_location = "";
 			cgiPass = "";
-			uploadPass = false;
-			dowloadPass = false;
 			clientMaxBodySize = -1;
 		}
 		Location (const Location& oth)	{ *this = oth; }
@@ -35,8 +32,6 @@ class	Location
 			this->return_code = oth.return_code;
 			this->return_location = oth.return_location;
 			this->cgiPass = oth.cgiPass;
-			this->uploadPass = oth.uploadPass;
-			this->dowloadPass = oth.dowloadPass;
 			this->clientMaxBodySize = oth.clientMaxBodySize;
 			return *this;
 		}
@@ -48,12 +43,9 @@ class	Location
 			autoindex = false;
 			index = "index.html";
 			accessMethods.clear();
-			accessMethods.push_back("GET");
 			return_code = 0;
 			return_location = "";
 			cgiPass = "";
-			uploadPass = false;
-			dowloadPass = false;
 			clientMaxBodySize = -1;
 		}
 
@@ -66,8 +58,6 @@ class	Location
 		int							return_code;
 		std::string					return_location;
 		std::string					cgiPass;
-		bool						uploadPass;
-		bool						dowloadPass;
 		int							clientMaxBodySize;
 };
 
