@@ -8,6 +8,9 @@
 # include <dirent.h> //opendir
 # include <sys/stat.h> //stat or <sys/types.h> <unistd.h>
 
+class	Server;
+class	Location;
+
 class	Client
 {
 	public:
@@ -83,54 +86,201 @@ class	Client
 		void	setResponse(const std::string &response)
 		{ this->response = response; }
 
-		int		check_501(void)
+		const std::string	getRequestTarget()
+		{ 
+			std::map<std::string, std::string>::iterator	it;
+
+			it = json_request.find("request_target");
+			if (it != json_request.end())
+				return (*it).second;
+			return ("");
+		}
+
+		const std::string	getRequestMethod()
+		{ 
+			std::map<std::string, std::string>::iterator	it;
+
+			it = json_request.find("method");
+			if (it != json_request.end())
+				return (*it).second;
+			return ("");
+		}
+
+		const std::string	getRequestHost(void)
+		{ 
+			std::map<std::string, std::string>::iterator	it;
+
+			it = json_request.find("Host");
+			if (it != json_request.end())
+				return (*it).second;
+			return ("");
+		}
+
+		void	setResponseHeaderStatus(const int& code)
+		{ responseHeader["Status"] = get_status_code(code); }
+
+		bool	checkResponseHeaderConnectionClose()
 		{
-			std::string	method;
+			std::map<std::string, std::string>::iterator	it;
 
-			method = json_request["method"];
+			it = responseHeader.find("Connection");
+			if (it != responseHeader.end() && (*it).second == "close")
+				return (true);
+			return (false);
+		}
 
-			if (method != "GET" && method != "POST" && method != "DELETE" && method != "PUT" && method != "HEAD")
+		std::string	getPathErrorPage(const int& code) const
+		{
+			std::map<int, std::string>::iterator	it;
+
+			if (server == nullptr)
+				return ("");
+
+			it = server->errorPage.find(code);
+			if (it != server->errorPage.end())
+				return (*it).second;
+			return ("");
+		}
+
+		void			setServer(Server* serv)
+		{ this->server = serv; }
+
+		Server*			getServer() const
+		{ return this->server; }
+
+		void			setLocation(Location* loc)
+		{ this->location = loc; }
+
+		void			setResponseHeaderLocation(const std::string& str)
+		{ responseHeader["Location"] = str; }
+
+		const Location*	getLocation() const
+		{ return this->location; }
+
+		void				setPathFile(const std::string& str)
+		{ this->path_file = str; }
+
+		const std::string&	getPathFile() const
+		{ return this->path_file; }
+
+		Location*			getLocationFindRule(const std::string& rule)
+		{ return (server->findLocationRule(rule)); }
+
+//READ_SOCKET__________________________________________________________________
+		void	erase_header_request()
+		{
+			std::map<std::string, std::string>::iterator	it;
+
+			size_t	found = request.find("\r\n\r\n");
+
+			if (found != std::string::npos)
 			{
-				responseHeader["Allow"] = "GET, POST, DELETE";
-				return (1);
+				create_json_request_header(request.substr(0, found));
+				request.erase(0, found + 4);
+
+				it = json_request.find("Content-Length");
+				if (it != json_request.end())
+					readByte = atoi((*it).second.c_str());
+
+				it = json_request.find("Transfer-Encoding");
+				if (it != json_request.end() && (*it).second == "chunked")
+					chunked = 1;
 			}
-			return (0);
+		}
+//READ_SOCKET__________________________________________________________________
+		bool	readSocketCheckEndRead()
+		{
+			if (chunked == 0 && request.size() == readByte)
+			{
+				readByte = 0;
+				responseHeader.clear();
+
+				if (json_request.find("Content-Length") != json_request.end())
+					json_request["body"] = request;
+
+				debug_info(getRequestMethod() + " " + getRequestHost()
+						+ " " + getRequestTarget() + " BODY_SIZE:"
+					+ std::to_string(json_request["body"].size()));
+
+				/*
+				std::cout << "____REQUEST_HEADER________\n";
+				debug_show_map(json_request);
+				std::cout << "BODY SIZE: "
+					+ std::to_string(json_request["body"].size()) + '\n';
+				std::cout << "__________________________\n";
+				*/
+
+				return (true);
+			}
+			return (false);
+		}
+//READ_SOCKET__________________________________________________________________
+		void	exec_chunk()
+		{
+			size_t		found;
+
+			while (chunked > 0)
+			{
+				if (chunked == 1)
+				{
+					found = request.find("\r\n");
+					if (found == std::string::npos)
+						break ;
+					readByte = convert_str_to_base16(request.substr(0, found));
+					chunked = 2;
+					request.erase(0, found + 2);
+				}
+
+				if (chunked == 2)
+				{
+					if (request.size() < readByte + 2)
+						break ;
+					json_request["body"] += request.substr(0, readByte);
+					request.erase(0, readByte + 2);
+
+					if (readByte == 0)
+						chunked = 0;
+					else
+						chunked = 1;
+				}
+			}
 		}
 
 		int		check_redirect()
 		{
-			if (location->return_code != 0)
-				responseHeader["Location"] = location->return_location;
-			return (location->return_code);
+			if (location->getReturnCode() != 0)
+				setResponseHeaderLocation(location->getReturnLocation());
+			return (location->getReturnCode());
 		}
 
-		int		check_413(void)
+		int		check_413()
 		{
-			if (-1 == location->clientMaxBodySize)
+			if (-1 == location->getClientMaxBodySize())
 				return (0);
-
-			if (json_request["body"].size() > location->clientMaxBodySize)
+			if (json_request["body"].size() > location->getClientMaxBodySize())
 				return (1);
-
 			return (0);
 		}
 
-		int		check_405(void)
+		bool		check_501()
 		{
-			std::vector<std::string>::iterator	it;
-			std::string							method;
+			std::string	method = json_request["method"];
 
-			it = location->accessMethods.begin();
-
-			method = json_request["method"];
-
-			while (it != location->accessMethods.end())
+			if (method != "GET" && method != "POST" && method != "DELETE" && method != "PUT" && method != "HEAD")
 			{
-				if (*it == method)
-					return (0);
-				++it;
+				responseHeader["Allow"] = "GET, POST, DELETE";
+				return (true);
 			}
-			return (1);
+			return (false);
+		}
+
+		bool		check_405(void)
+		{
+			std::string		method = json_request["method"];
+
+			if (location->checkAccessMethod(method))
+				return (false);
+			return (true);
 		}
 //GET__________________________________________________________________________
 		int		get_run()
@@ -329,7 +479,6 @@ class	Client
 				return (404);
 			*/
 
-			body.clear();
 			if (path_file[0] != '/')
 				path_file = "/" + path_file;
 			path_file = getenv("PWD") + path_file;
@@ -683,25 +832,6 @@ class	Client
 			//envCgi["SCRIPT_NAME"] = "./test.bla";
 		}
 //CGI__________________________________________________________________________
-		int		cgi_read(int fd)
-		{
-			long    bytes;
-
-			body.clear();
-
-			bytes = read(fd, buf, BUF_SIZE - 1);
-			while (bytes > 0)
-			{
-				buf[bytes] = '\0';
-				body.append(buf);
-				bytes = read(fd, buf, BUF_SIZE - 1);
-			}
-
-			if (bytes < 0)
-				return (500);
-			return (200);
-		}
-//CGI__________________________________________________________________________
 		int		cgi_parser_header(std::string str)
 		{
 			print_debug("cgi parser header");
@@ -810,7 +940,12 @@ class	Client
 			else
 				response = header + body;
 
+			std::cout << "__RESPONSE_HEADER_________\n";
+			std::cout << header << std::endl;
+			std::cout << "__________________________\n";
+
 			body.clear();
+			header.clear();
 			json_request.clear();
 		}
 //ADD__________________________________________________________________________
@@ -855,10 +990,12 @@ class	Client
 
 		void	find_query_string_path_info()
 		{
-			path_file = json_request["request_target"];
+			size_t	found;
+
+			path_file = getRequestTarget();
 
 			envCgi["QUERY_STRING"] = "/";
-			int	found = path_file.find('?');
+			found = path_file.find('?');
 			if (std::string::npos != found)
 			{
 				envCgi["QUERY_STRING"] = path_file.substr(found + 1);

@@ -1,12 +1,14 @@
 # include "Webserver.hpp"
 
+# define CONF_DEFAULT "conf/conf.conf"
+
 //CONF_PARSER__________________________________________________________________
 int		Webserver::readConfigFile(const char* fileName)
 {
 	std::string					file;
 
 	if (!fileName)
-		file = "conf/conf.conf";
+		file = CONF_DEFAULT;
 	else
 		file = fileName;
 
@@ -37,7 +39,7 @@ int		Webserver::readConfigFile(const char* fileName)
 						return (-1);
 					}
 					server.location.push_back(location);
-					makeServer(server);
+					setServer(server);
 				}
 
 				location.clear();
@@ -51,6 +53,8 @@ int		Webserver::readConfigFile(const char* fileName)
 				server.port = res[1];
 			else if (f_server && res[0] == "server_name:" && res.size() == 2)
 				server.serverName = res[1];
+			else if (f_server && !f_location && res[0] == "client_max_body_size:" && res.size() == 2)
+				server.clientMaxBodySize = atoi(res[1].c_str());
 			else if (f_server && res[0] == "error_page:" && res.size() == 3)
 				server.errorPage[ atoi(res[1].c_str()) ] = res[2];
 			else if (f_server && res[0] == "location" && res.size() == 2)
@@ -81,8 +85,9 @@ int		Webserver::readConfigFile(const char* fileName)
 		}
 
 		server.location.push_back(location);
-		makeServer(server);
+		setServer(server);
 
+		add_client_max_body_size();
 		myfile.close();
 	}
 	else
@@ -92,6 +97,21 @@ int		Webserver::readConfigFile(const char* fileName)
 	}
 	
 	return (0);
+}
+//ADD_CLIENT_MAX_BODY________________________________________________________
+void	Webserver::add_client_max_body_size()
+{
+	std::vector<Server>::iterator		it;
+	std::vector<Location>::iterator		lc;
+
+	for (it = server.begin(); it != server.end(); ++it)
+	{
+		for (lc = (*it).location.begin(); lc != (*it).location.end(); ++lc)
+		{
+			if ((*lc).clientMaxBodySize == -1)
+				(*lc).clientMaxBodySize = (*it).clientMaxBodySize;
+		}
+	}
 }
 //CONF_SHOW___________________________________________________________________
 void	Webserver::debug_show_conf()

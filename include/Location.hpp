@@ -49,6 +49,37 @@ class	Location
 			clientMaxBodySize = -1;
 		}
 
+		const std::string&	getRule() const
+		{ return this->rule; }
+
+		const std::string&	getRoot() const
+		{ return this->root; }
+
+		const std::string&	getIndex() const
+		{ return this->index; }
+
+		const int&	getReturnCode() const
+		{ return this->return_code; }
+
+		const std::string&	getReturnLocation() const
+		{ return this->return_location; }
+
+		const int&	getClientMaxBodySize() const
+		{ return this->clientMaxBodySize; }
+
+		const std::string&	getCgiPass() const
+		{ return this->cgiPass; }
+
+		bool		checkAccessMethod(const std::string& method)
+		{
+			std::vector<std::string>::iterator	it;
+
+			for (it = accessMethods.begin(); it != accessMethods.end(); ++it)
+				if (*it == method)
+					return (true);
+			return (false);
+		}
+
 	public:
 		std::string					rule;
 		std::string					root;

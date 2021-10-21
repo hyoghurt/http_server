@@ -6,8 +6,8 @@ void	print_debug(const std::string& str)
 void	print_info(const std::string& str)
 { std::cout << YELLOW << str << RESET << '\n'; }
 
-void	print_error(const std::string& str)
-{ std::cerr << RED << "webserver: Error: " << str << RESET << '\n'; }
+int		print_error(const std::string& str)
+{ std::cerr << RED << "webserver: Error: " << str << RESET << '\n'; return (-1); }
 
 void	print_error_strerror(const std::string& str)
 { std::cerr << RED << "webserver: Error: " << str << ": " << strerror(errno) << RESET << '\n'; }
@@ -131,4 +131,33 @@ int				check_host(const std::string &host)
    }
    catch (...) { return 4; }
    return 0;
+}
+
+std::string	get_status_code(const int& code)
+{
+	switch (code)
+	{
+		case 200:
+			return ("200 OK");
+		case 201:
+			return ("201 Created");
+		case 204:
+			return ("204 No Content");
+		case 301:
+			return ("301 Moved Permanently");
+		case 400:
+			return ("400 Bad Request");
+		case 404:
+			return ("404 Not Found");
+		case 405:
+			return ("405 Method Not Allowed");
+		case 413:
+			return ("413 Payload Too Large");
+		case 500:
+			return ("500 Internal Server Error");
+		case 501:
+			return ("501 Not Implemented");
+		default:
+			return ("Not found");
+	}
 }
