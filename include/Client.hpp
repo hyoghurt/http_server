@@ -6,7 +6,6 @@
 
 # include <iostream>
 # include <dirent.h> //opendir
-# include <sys/stat.h> //stat or <sys/types.h> <unistd.h>
 
 class	Server;
 class	Location;
@@ -14,16 +13,6 @@ class	Location;
 class	Client
 {
 	public:
-		/*
-		Client()
-		{
-			socket = 0;
-			time(&timeStart);
-			request = "";
-			response = "";
-		}
-		*/
-
 		Client(const int& socket, char* addr) : socket(socket), addr(addr)
 		{
 			time(&timeStart);
@@ -32,7 +21,6 @@ class	Client
 			readByte = 0;
 			flag = 0;
 			chunked = 0;
-			str_chunked = "";
 		}
 
 		Client(const Client& oth)	{ *this = oth; }
@@ -58,7 +46,6 @@ class	Client
 			this->addr = oth.addr;
 			this->flag = oth.flag;
 			this->chunked = oth.chunked;
-			this->str_chunked = oth.str_chunked;
 			return *this;
 		}
 
@@ -235,7 +222,7 @@ class	Client
 				{
 					if (request.size() < readByte + 2)
 						break ;
-					json_request["body"] += request.substr(0, readByte);
+					json_request["body"].append(request.substr(0, readByte));
 					request.erase(0, readByte + 2);
 
 					if (readByte == 0)
@@ -245,14 +232,88 @@ class	Client
 				}
 			}
 		}
+//FIND_LOCATION________________________________________________________________
+		int		find_location()
+		{
+			location = nullptr;
 
+			find_location_directory();
+
+			if (location != nullptr)
+			{
+				if (location->getRule() != "/")
+					path_file.erase(0, location->getRule().size());
+
+				path_file.insert(0, location->getRoot());
+
+				int	d = check_dir_or_file(path_file);
+				if (d == 1)
+				{
+					if (path_file[path_file.size() - 1] != '/')
+					{
+						path_file.push_back('/');
+						setResponseHeaderLocation(getRequestTarget() + "/");
+					}
+
+					d = check_dir_or_file(path_file + location->getIndex());
+
+					if (d == -1 && !location->getAutoindex())
+						path_file.append(location->getIndex());
+					if (d == 0)
+						path_file.append(location->getIndex());
+				}
+				find_location_filename_extension();
+			}
+			if (location == nullptr)
+				return (1);
+			return (0);
+		}
+//FIND_LOCATION________________________________________________________________
+		int			find_location_directory()
+		{
+			std::string		request_target;
+			size_t			found;
+
+			request_target = path_file;
+			while (request_target.length() != 0)
+			{
+				setLocation(server->findLocationRule(request_target));
+				if (location != nullptr)
+					return (0);
+				if (request_target == "/")
+					return (0);
+				found = request_target.find_last_of("/");
+				if (std::string::npos == found)
+					return (0);
+				if (found == 0)
+					found = 1;
+				request_target.erase(found);
+			}
+			return (0);
+		}
+//FIND_LOCATION________________________________________________________________
+		void		find_location_filename_extension()
+		{
+			std::string		request_target;
+			Location*		tmp_loc;
+
+			size_t	found = path_file.find_last_of('.');
+			if (found != std::string::npos)
+			{
+				request_target = path_file.substr(found);
+				tmp_loc = server->findLocationRule(request_target);
+				if (tmp_loc != nullptr)
+					setLocation(tmp_loc);
+			}
+		}
+//CHECK_REDIRECT_______________________________________________________________
 		int		check_redirect()
 		{
 			if (location->getReturnCode() != 0)
 				setResponseHeaderLocation(location->getReturnLocation());
 			return (location->getReturnCode());
 		}
-
+//CHECK_BODY_SIZE______________________________________________________________
 		int		check_413()
 		{
 			if (-1 == location->getClientMaxBodySize())
@@ -261,7 +322,7 @@ class	Client
 				return (1);
 			return (0);
 		}
-
+//CHECK_METHODS________________________________________________________________
 		bool		check_501()
 		{
 			std::string	method = json_request["method"];
@@ -273,7 +334,7 @@ class	Client
 			}
 			return (false);
 		}
-
+//CHECK_METHOD_________________________________________________________________
 		bool		check_405(void)
 		{
 			std::string		method = json_request["method"];
@@ -285,16 +346,12 @@ class	Client
 //GET__________________________________________________________________________
 		int		get_run()
 		{
-			print_debug("F method GET");
-
 			DIR									*dp;
 			struct dirent						*ep;
 			std::vector<std::string>			name_file;
 
-			if (check_dir_or_file(path_file) == 1 && location->autoindex)
+			if (check_dir_or_file(path_file) == 1 && location->getAutoindex())
 			{
-				print_debug("F autoindex true");
-
 				dp = opendir(path_file.c_str());
 				if (nullptr != dp)
 				{
@@ -315,8 +372,6 @@ class	Client
 //GET__________________________________________________________________________
 		int		open_file(const std::string& str)
 		{
-			print_debug("F open file: " + str);
-
 			int				length;
 			char*			buffer;
 			int				status_code(200);
@@ -325,8 +380,6 @@ class	Client
 
 			if (is)
 			{
-				debug_info("open file: " + str);
-
 				is.seekg (0, is.end);
 				length = is.tellg();
 				is.seekg (0, is.beg);
@@ -392,10 +445,7 @@ class	Client
 //POST_________________________________________________________________________
 		int				post_run()
 		{
-			print_debug("F post file: " + path_file);
-
-			int	f = check_dir_or_file(path_file);
-			if (f == 1)
+			if (check_dir_or_file(path_file) == 1)
 				return (404);
 
 			if (json_request["body"].size() == 0)
@@ -405,19 +455,16 @@ class	Client
 
 			if (!myfile)
 			{
-				debug_info(path_file + " no open");
+				print_error(path_file + " no open");
 				return (500);
 			}
 			myfile << json_request["body"];
 			myfile.close();
-			debug_info(path_file + " mod");
 			return (201);
 		}
 //DELETE_______________________________________________________________________
 		int		deleteFile() const
 		{
-			print_debug("F delete file: " + path_file);
-
 			if (unlink(path_file.c_str()) == -1)
 				return 404;
 
@@ -446,7 +493,7 @@ class	Client
 		void	autoindex_create_body(std::vector<std::string>& name_file)
 		{
 			std::vector<std::string>::iterator	it;
-			std::string&		dir = json_request["request_target"];
+			std::string							dir = getRequestTarget();
 
 			body.assign("<html><head>\r\n");
 			body.append("<meta http-equiv=\"Content-Type\" ");
@@ -471,14 +518,6 @@ class	Client
 //CGI__________________________________________________________________________
 		int		cgi_run()
 		{
-			print_debug("F run cgi");
-
-			/*
-			int		f = check_dir_or_file(path_file);
-			if (f == -1)
-				return (404);
-			*/
-
 			if (path_file[0] != '/')
 				path_file = "/" + path_file;
 			path_file = getenv("PWD") + path_file;
@@ -513,11 +552,140 @@ class	Client
 			close(in);
 			close(out);
 		}
+
+		int		cgi_write(int fd_in)
+		{
+			std::string		tmp;
+
+			if (json_request["body"].size() > 16384)
+			{
+				tmp = json_request["body"].substr(0, 16384);
+				if (-1 == cgi_write_add(fd_in, tmp))
+					return (-1);
+			}
+
+			else if (!json_request["body"].empty())
+			{
+				tmp = json_request["body"].substr();
+				if (-1 == cgi_write_add(fd_in, tmp))
+					return (-1);
+			}
+
+			if (json_request["body"].empty())
+			{
+				long bytes = write(fd_in, "\0", 1);
+				if (bytes > 0)
+					return (0);
+				if (bytes < 0)
+					return (-1);
+			}
+
+			return (1);
+		}
+
+		int		cgi_write_add(const int& fd_in, const std::string& tmp)
+		{
+			long bytes = write(fd_in, tmp.c_str(), tmp.size());
+
+			if (bytes > 0)
+				json_request["body"].erase(0, bytes);
+			if (bytes < 0)
+				return (-1);
+			return (0);
+		}
+
+		int		cgi_read(const int& fd_out, int& status_code, int& f_header)
+		{
+			int			bytes(0);
+			char		bu[20000];
+			int			ofset;
+			size_t		found;
+			std::string	tmp;
+
+			bytes = read(fd_out, bu, 20000);
+			if (bytes > 0)
+			{
+				if (f_header == 0)
+				{
+					body.append(bu, bytes);
+
+					ofset = 4;
+					found = body.find("\r\n\r\n");
+					if (found == std::string::npos)
+					{
+						ofset = 2;
+						found = body.find("\n\n");
+					}
+					if (found != std::string::npos)
+					{
+						status_code = cgi_parser_header(body.substr(0, found));
+						body.erase(0, found + ofset);
+
+						bytes = body.size();
+						f_header = 1;
+
+						if (check_chunk_header_request() && bytes > 0)
+						{
+							tmp.assign(body);
+							body.assign(convert_base16_to_str(body.size()));
+							body.append("\r\n");
+							body.append(tmp);
+							body.append("\r\n");
+						}
+					}
+				}
+				else if (check_chunk_header_request())
+				{
+					tmp.assign(bu, bytes);
+
+					body.append(convert_base16_to_str(bytes));
+					body.append("\r\n");
+					body.append(tmp);
+					body.append("\r\n");
+				}
+				else
+				{
+					body.append(bu, bytes);
+				}
+			}
+
+			if (bytes < 0)
+				return (-1);
+
+			if (bytes < 20000 && json_request["body"].size() == 0)
+			{
+				if (check_chunk_header_request())
+					body.append("0\r\n\r\n");
+				return (0);
+			}
+
+			return (1);
+		}
+
+		int		processing_write_read(const int& fd_in, const int& fd_out)
+		{
+			int			f_w(1);
+			int			f_r(1);
+			int			status_code(200);
+			int			f_header(0);
+
+			while (f_r)
+			{
+				if (f_w)
+					f_w = cgi_write(fd_in);
+				if (f_w < 0)
+					return (500);
+
+				f_r = cgi_read(fd_out, status_code, f_header);
+				if (f_r < 0)
+					return (500);
+			}
+
+			return (status_code);
+		}
 //CGI__________________________________________________________________________
 		int		cgi_fork(char** arg, char** env)
 		{
-			print_debug("F cgi fork");
-
 			int		fd_in_pipe[2], fd_out_pipe[2];
 			int		status;
 			int		status_code(200);
@@ -561,156 +729,16 @@ class	Client
 			}
 
 			cgi_return_save_std_fd(save_fd_in, save_fd_out);
-
-			long		bytes(0);
-			std::string	tmp;
-			int			w(0);
-			char		bu[20001];
-
-			int			f_w(1);
-			int			f_r(1);
-			int			found;
-			int			ofset;
-
-			readByte = 0;
-
-			while (f_r)
-			{
-				if (f_w)
-				{
-					if (json_request["body"].size() > 16384)
-					{
-						tmp = json_request["body"].substr(0, 16384);
-						bytes = write(fd_in_pipe[1], tmp.c_str(), tmp.size());
-						if (bytes > 0)
-						{
-							json_request["body"].erase(0, bytes);
-						}
-					}
-					else if (!json_request["body"].empty())
-					{
-						tmp = json_request["body"].substr();
-						bytes = write(fd_in_pipe[1], tmp.c_str(), tmp.size());
-						if (bytes > 0)
-						{
-							json_request["body"].erase(0, bytes);
-						}
-					}
-
-					if (json_request["body"].empty())
-					{
-						bytes = write(fd_in_pipe[1], "\0", 1);
-						if (bytes > 0)
-						{
-							f_w = 0;
-						}
-					}
-				}
-
-				bytes = read(fd_out_pipe[0], bu, 20000);
-				if (bytes > 0)
-				{
-					if (readByte == 0)
-					{
-						body.append(bu, bytes);
-
-						ofset = 4;
-						found = body.find("\r\n\r\n");
-						if (found == std::string::npos)
-						{
-							ofset = 2;
-							found = body.find("\n\n");
-						}
-						if (found != std::string::npos)
-						{
-							status_code = cgi_parser_header(body.substr(0, found));
-							body.erase(0, found + ofset);
-
-							bytes = body.size();
-							readByte = 1;
-							//strcpy (bu, body.c_str());
-
-							if (check_chunk_header_request() && bytes > 0)
-							{
-								tmp.assign(body);
-
-								body.assign(convert_base16_to_str(body.size()));
-								body.append("\r\n");
-								body.append(tmp);
-								body.append("\r\n");
-							}
-						}
-					}
-					else if (check_chunk_header_request())
-					{
-						tmp.assign(bu, bytes);
-
-						body.append(convert_base16_to_str(bytes));
-						body.append("\r\n");
-						body.append(tmp);
-						body.append("\r\n");
-					}
-					else
-					{
-						body.append(bu, bytes);
-					}
-				}
-
-				if (bytes < 20000 && json_request["body"].size() == 0)
-				{
-					if (check_chunk_header_request())
-						body.append("0\r\n\r\n");
-					f_r = 0;
-				}
-			}
+			status_code = processing_write_read(fd_in_pipe[1], fd_out_pipe[0]);
 
 			close(fd_in_pipe[1]);
 			close(fd_out_pipe[0]);
 
 			readByte = 0;
-
 			wait(&status);
 
-				//std::cout << "bytes read: " << bytes << std::endl;
-				/*
-				w = waitpid(0, &status, WNOHANG);
-				std::cout << "w=" << w << std::endl;
-
-				print_status_wait(status);
-
-				if (WIFEXITED(status) != 0)
-					break ;
-
-				if (w == 0)
-					break ;
-
-				if (w == -1)
-				{
-					print_error("waitpid -1");
-					break ;
-				}
-				*/
-
-			/*
-			wirte exit status code this no work
-			std::cout << "exit STATUS " << WEXITSTATUS(status) << std::endl;
-			std::cout << "exit STATUS " << status << std::endl;
-			if (WEXITSTATUS(status) == 2)
-			{
-				status_code = 404;
-				print_info("execve exit 2");
-			}
-			else if (WEXITSTATUS(status) != 0)
-			{
-				status_code = 500;
-				print_error("execve exit 0");
-			}
-			*/
-
-			std::cout << "status_code= " << status_code << std::endl;
 			if (status_code == 200 && check_chunk_header_request())
 				responseHeader["Transfer-Encoding"] = "chunked";
-			std::cout << "BODY_SIZE=" << body.size() << std::endl;
 
 			return (status_code);
 		}
@@ -940,10 +968,6 @@ class	Client
 			else
 				response = header + body;
 
-			std::cout << "__RESPONSE_HEADER_________\n";
-			std::cout << header << std::endl;
-			std::cout << "__________________________\n";
-
 			body.clear();
 			header.clear();
 			json_request.clear();
@@ -1141,7 +1165,6 @@ class	Client
 		std::string							addr;
 		int									flag;
 		int									chunked;
-		std::string							str_chunked;
 };
 
 #endif

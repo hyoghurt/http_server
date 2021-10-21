@@ -80,6 +80,9 @@ class	Location
 			return (false);
 		}
 
+		bool		getAutoindex() const
+		{ return this->autoindex; }
+
 	public:
 		std::string					rule;
 		std::string					root;

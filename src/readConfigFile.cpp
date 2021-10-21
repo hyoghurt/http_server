@@ -1,6 +1,7 @@
 # include "Webserver.hpp"
 
-# define CONF_DEFAULT "conf/conf.conf"
+# define CONF_DEFAULT "tester/ft_tester/conf.conf"
+//# define CONF_DEFAULT "tester/my_tester/conf.conf"
 
 //CONF_PARSER__________________________________________________________________
 int		Webserver::readConfigFile(const char* fileName)
@@ -49,14 +50,19 @@ int		Webserver::readConfigFile(const char* fileName)
 			}
 			else if (f_server && res[0] == "host:" && res.size() == 2)
 				server.ipAddress = res[1];
+
 			else if (f_server && res[0] == "port:" && res.size() == 2)
 				server.port = res[1];
+
 			else if (f_server && res[0] == "server_name:" && res.size() == 2)
 				server.serverName = res[1];
+
 			else if (f_server && !f_location && res[0] == "client_max_body_size:" && res.size() == 2)
 				server.clientMaxBodySize = atoi(res[1].c_str());
+
 			else if (f_server && res[0] == "error_page:" && res.size() == 3)
 				server.errorPage[ atoi(res[1].c_str()) ] = res[2];
+
 			else if (f_server && res[0] == "location" && res.size() == 2)
 			{
 				if (f_location)
@@ -66,18 +72,30 @@ int		Webserver::readConfigFile(const char* fileName)
 				f_location = true;
 				location.rule = res[1];
 			}
+
 			else if (f_server && f_location && res[0] == "root:" && res.size() == 2)
 				location.root = res[1];
+
 			else if (f_server && f_location && res[0] == "index:" && res.size() == 2)
 				location.index = res[1];
+
+			else if (f_server && f_location && res[0] == "autoindex:" && res.size() == 2)
+			{
+				if (res[1] == "on")
+					location.autoindex = true;
+			}
+
 			else if (f_server && f_location && res[0] == "access_method:")
 				for (int i = 1; i != res.size(); ++i)
 					location.accessMethods.push_back(res[i]);
+
 			else if (f_server && f_location && res[0] == "cgi_pass:" && res.size() == 2)
 				location.cgiPass = res[1];
+
 			else if (f_server && f_location && res[0] == "client_max_body_size:" && res.size() == 2)
 				location.clientMaxBodySize = atoi(res[1].c_str());
-			else if (f_server && f_location && res[0] == "return" && res.size() == 3)
+
+			else if (f_server && f_location && res[0] == "return:" && res.size() == 3)
 			{
 				location.return_code = atoi(res[1].c_str());
 				location.return_location = res[2];

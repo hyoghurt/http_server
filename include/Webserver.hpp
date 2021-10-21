@@ -16,7 +16,6 @@
 class	Webserver
 {
 	public:
-
 //CONSTRUCTOR__________________________________________________________________
 		Webserver() {}
 //COPY_________________________________________________________________________
@@ -230,7 +229,8 @@ class	Webserver
 					if (bytes < 0)
 						(*it_client).debug_info("close socket (write = -1)");
 					else
-						(*it_client).debug_info("close socket (time)");
+						(*it_client).debug_info("close socket (time > "
+								+ std::to_string(TIME_KEEP_ALIVE) + ")");
 					close(socket_client);
 					it_client = client.erase(it_client);
 					continue;
@@ -278,7 +278,7 @@ class	Webserver
 					if (client.response.empty())
 					{
 						client.flag = 0;
-						client.debug_info("RESPONSE END");
+						client.debug_info(client.responseHeader["Status"]);
 					}
 				}
 			}
@@ -294,7 +294,7 @@ class	Webserver
 			if (max_header == 413)
 				status_code = 413;
 			else
-				status_code = processing_request(client);
+				status_code = processing_response(client);
 
 			//формирование_итога_для_отправки__________________________________
 			client.setResponseHeaderStatus(status_code);
@@ -308,21 +308,19 @@ class	Webserver
 			client.flag = 1;
 		}
 //RESPONSE_____________________________________________________________________
-		int		processing_request(Client& client)
+		int		processing_response(Client& client)
 		{
 			std::map<std::string, std::string>::iterator	it;
 
 			//привязка_к_config_server_________________________________________
-			find_server(client);
-			if (client.getServer() == nullptr)
+			if (find_server(client))
 				return (400);
 
 			//вытащить_переменные_для_cgi______________________________________
 			client.find_query_string_path_info();
 
 			//привязка_к_config_location_______________________________________
-			find_location(client);
-			if (client.getLocation() == nullptr)
+			if (client.find_location())
 				return (400);
 
 			//редирект_________________________________________________________
@@ -359,7 +357,7 @@ class	Webserver
 			return (client.post_run());
 		}
 //CONFIG_SERVER________________________________________________________________
-		void		find_server(Client& client)
+		int		find_server(Client& client)
 		{
 			std::vector<Server>::iterator	it;
 			std::string						host;
@@ -384,109 +382,10 @@ class	Webserver
 			for (it = server.begin(); it != server.end(); ++it)
 				if ((*it).getServerName() == host)
 					client.setServer(&(*it));
-		}
-//CONFIG_LOCATION______________________________________________________________
-		int			find_location(Client& client)
-		{
-			int		header_location(0);
 
-			client.setLocation(nullptr);
-			find_location_directory(client);
-
-			if (client.getLocation() != nullptr)
-			{
-				std::string	tmp(client.getPathFile());
-
-				if (client.getLocation()->getRule() != "/")
-					tmp.erase(0, client.getLocation()->getRule().size());
-
-				tmp.insert(0, client.getLocation()->getRoot());
-
-				int	d = check_dir_or_file(tmp);
-
-				if (d == 1)
-				{
-					size_t	size = tmp.size();
-
-					if (tmp[size - 1] != '/')
-					{
-						tmp.push_back('/');
-						client.setResponseHeaderLocation
-							(client.getRequestTarget() + "/");
-					}
-
-					d = check_dir_or_file(tmp
-							+ client.getLocation()->getIndex());
-
-					if (d == -1 && !client.location->autoindex)
-						tmp.append(client.getLocation()->getIndex());
-					if (d == 0)
-						tmp.append(client.getLocation()->getIndex());
-				}
-				client.setPathFile(tmp);
-				find_location_filename_extension(client);
-			}
+			if (client.getServer() == nullptr)
+				return (1);
 			return (0);
-		}
-//CONFIG_LOCATION______________________________________________________________
-		int			find_location_directory(Client &client)
-		{
-			std::string		request_target;
-			size_t			found;
-
-			request_target = client.getPathFile();
-
-			while (request_target.length() != 0)
-			{
-				client.setLocation(client.getLocationFindRule(request_target));
-
-				if (client.getLocation() != nullptr)
-					return (0);
-
-				if (request_target == "/")
-					return (0);
-
-				found = request_target.find_last_of("/");
-				if (std::string::npos == found)
-					return (0);
-
-				if (found == 0)
-					found = 1;
-
-				request_target.erase(found);
-			}
-			return (0);
-		}
-//CONFIG_LOCATION______________________________________________________________
-		Location*	return_location(Client& client, const std::string& str)
-		{
-			return (client.getServer()->findLocationRule(str));
-
-			/*
-			it = (client.getServer())->getLocation().begin();
-			while (it != (client.getServer())->getLocation().end())
-			{
-				if ((*it).getRule() == str)
-					return (&(*it));
-				++it;
-			}
-			return (nullptr);
-			*/
-		}
-//CONFIG_LOCATION______________________________________________________________
-		void		find_location_filename_extension(Client& client)
-		{
-			std::string		request_target;
-			Location*		tmp_loc;
-
-			size_t	found = client.getPathFile().find_last_of('.');
-			if (found != std::string::npos)
-			{
-				request_target = client.getPathFile().substr(found);
-				tmp_loc = client.getLocationFindRule(request_target);
-				if (tmp_loc != nullptr)
-					client.setLocation(tmp_loc);
-			}
 		}
 //CHECK_CLOSE_CLIENT___________________________________________________________
 		bool	checkCloseClient(Client& client)

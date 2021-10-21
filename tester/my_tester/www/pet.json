@@ -1,0 +1,18 @@
+{
+    "id": 18401,
+    "category": {
+        "id": 123,
+        "name": "Pony"
+    },
+    "name": "fluffy",
+    "photoUrls": [
+        "string"
+    ],
+    "tags": [
+        {
+            "id": 0,
+            "name": "string"
+        }
+    ],
+    "status": "available"
+}
