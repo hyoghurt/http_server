@@ -2,7 +2,11 @@ INCLUDE			= include
 NAME			= webserv
 SRC				= main.cpp \
 				  add_func.cpp \
-				  readConfigFile.cpp
+				  readConfigFile.cpp \
+				  Webserver.cpp \
+				  Location.cpp \
+				  Server.cpp \
+				  Client.cpp
 
 SRCDIR			= src
 OBJDIR			= obj

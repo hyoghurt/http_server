@@ -19,7 +19,7 @@ if fileitem.filename:
     # directory traversal attacks
     fn = os.path.basename(fileitem.filename)
     #cwd = os.getcwd()
-    open("www/dowloads/" + fn, 'wb').write(fileitem.file.read())
+    open("tester/my_tester/www/dowloads/" + fn, 'wb').write(fileitem.file.read())
 
     message = 'The file "' + fn + '" was uploaded successfully'
 
