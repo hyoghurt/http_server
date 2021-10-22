@@ -58,7 +58,7 @@ int		Webserver::checkIpAddressAndPort(const std::string& ip,
 
 	for (it = server.begin(); it != it_end; ++it)
 		if ((*it).getIpAddress() == ip and (*it).getPort() == port)
-			return (print_error("check ip and port"));
+			return (-1);
 	return (0);
 }
 
