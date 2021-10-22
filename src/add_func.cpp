@@ -1,11 +1,5 @@
 #include "add_func.hpp"
 
-void	print_debug(const std::string& str)
-{ return; std::cout << BLUE << str << RESET << '\n'; }
-
-void	print_info(const std::string& str)
-{ std::cout << YELLOW << str << RESET << '\n'; }
-
 int		print_error(const std::string& str)
 { std::cerr << RED << "webserver: Error: " << str << RESET << '\n'; return (-1); }
 
@@ -160,4 +154,22 @@ std::string	get_status_code(const int& code)
 		default:
 			return ("Not found");
 	}
+}
+
+std::pair<std::string, std::string>	returnKeyVal(const std::string& str)
+{
+	int				start(0);
+	int				end(0);
+	std::string		key("");
+	std::string		val("");
+
+	start = str.find_first_not_of(" \t", start);
+	end = str.find(":");
+	if (end != std::string::npos)
+	{
+		key = str.substr(start, end - start);
+		start = str.find_first_not_of(" \t", end + 1);
+		val = str.substr(start);
+	}
+	return (std::pair<std::string, std::string>(key, val));
 }
