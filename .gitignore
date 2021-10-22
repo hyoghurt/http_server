@@ -9,3 +9,5 @@ docker_nginx
 src/cgi2.cpp
 src/cgi.cpp
 src/a.out
+ws.conf
+.vscode/

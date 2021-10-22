@@ -11,13 +11,13 @@ CC				= clang++
 CFLAGS			= -Wall -Wextra -Werror
 
 $(NAME):		$(OBJ)
-				$(CC) $(OBJ) -o $(NAME) 
+				$(CC) $(OBJ) -o $(NAME) -g
 
-$(OBJDIR):			
+$(OBJDIR):
 				mkdir -p $@
 
 $(OBJDIR)/%.o:	$(SRCDIR)/%.cpp | $(OBJDIR)
-				$(CC) -std=c++98 -I$(INCLUDE) -c -MD $< -o $@
+				$(CC) -std=c++98 -I$(INCLUDE) -c -MD $< -o $@ -g
 
 include $(wildcard $(OBJDIR)/*.d)
 

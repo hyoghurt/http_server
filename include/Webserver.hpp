@@ -45,6 +45,10 @@ class	Webserver
 		void	debug_show_conf();
 		int		readConfigFile(const char* fileName);
 		void	add_client_max_body_size();
+		bool	checkСorrectField();
+		bool	checkCorrectMethodName(std::vector <std::string> names);
+		bool	checkCorrectIP(std::string ip);
+		bool 	checkCorrectHost(std::string host);
 
 //CREATE_LISTEN_SOCKET_________________________________________________________
 		int		createSocketListen()
