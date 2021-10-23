@@ -1,7 +1,7 @@
 INCLUDE			= include
 NAME			= webserv
 SRC				= main.cpp \
-				  add_func.cpp \
+				  addFunctions.cpp \
 				  readConfigFile.cpp \
 				  Webserver.cpp \
 				  Location.cpp \

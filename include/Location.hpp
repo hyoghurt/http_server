@@ -23,24 +23,26 @@ class	Location
 		const std::string&	getReturnLocation() const;
 		const std::string&	getCgiPass() const;
 		const int&			getClientMaxBodySize() const;
+
 		void				setRule(const std::string& str);
 		void				setRoot(const std::string& str);
 		void				setAutoindex(const bool& b);
 		void				setIndex(const std::string& str);
-		void				setAccessMethods(const std::vector<std::string>& v);
+		void				setAccessMethods(const std::string& str);
+		void				setReturn(const int& i, const std::string& str);
 		void				setReturnCode(const int& i);
 		void				setReturnLocation(const std::string& str);
 		void				setCgiPass(const std::string& str);
 		void				setClientMaxBodySize(const int& i);
 
-	public:
+	private:
 		std::string					rule;
 		std::string					root;
 		bool						autoindex;
 		std::string					index;
 		std::vector<std::string>	accessMethods;
-		int							return_code;
-		std::string					return_location;
+		int							returnCode;
+		std::string					returnLocation;
 		std::string					cgiPass;
 		int							clientMaxBodySize;
 };

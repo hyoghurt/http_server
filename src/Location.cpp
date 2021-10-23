@@ -6,8 +6,8 @@ Location::Location ()
 	root = "";
 	autoindex = false;
 	index = "index.html";
-	return_code = 0;
-	return_location = "";
+	returnCode = 0;
+	returnLocation = "";
 	cgiPass = "";
 	clientMaxBodySize = -1;
 }
@@ -25,8 +25,8 @@ Location&	Location::operator= (const Location& oth)
 	this->autoindex = oth.autoindex;
 	this->index = oth.index;
 	this->accessMethods = oth.accessMethods;
-	this->return_code = oth.return_code;
-	this->return_location = oth.return_location;
+	this->returnCode = oth.returnCode;
+	this->returnLocation = oth.returnLocation;
 	this->cgiPass = oth.cgiPass;
 	this->clientMaxBodySize = oth.clientMaxBodySize;
 	return *this;
@@ -39,8 +39,8 @@ void	Location::clear()
 	autoindex = false;
 	index = "index.html";
 	accessMethods.clear();
-	return_code = 0;
-	return_location = "";
+	returnCode = 0;
+	returnLocation = "";
 	cgiPass = "";
 	clientMaxBodySize = -1;
 }
@@ -68,10 +68,10 @@ const std::string&		Location::getIndex() const
 { return this->index; }
 
 const int&				Location::getReturnCode() const
-{ return this->return_code; }
+{ return this->returnCode; }
 
 const std::string&		Location::getReturnLocation() const
-{ return this->return_location; }
+{ return this->returnLocation; }
 
 const std::string&		Location::getCgiPass() const
 { return this->cgiPass; }
@@ -91,17 +91,24 @@ void			Location::setAutoindex(const bool& b)
 void			Location::setIndex(const std::string& str)
 { this->index = str; }
 
-void			Location::setAccessMethods(const std::vector<std::string>& v)
-{ this->accessMethods = v; }
+void			Location::setAccessMethods(const std::string& str)
+{ this->accessMethods.push_back(str); }
+
+void			Location::setReturn(const int& i, const std::string& str)
+{
+	this->returnCode = i;
+	this->returnLocation = str;
+}
 
 void			Location::setReturnCode(const int& i)
-{ this->return_code = i; }
+{ this->returnCode = i; }
 
 void			Location::setReturnLocation(const std::string& str)
-{ this->return_location = str; }
+{ this->returnLocation = str; }
 
 void			Location::setCgiPass(const std::string& str)
 { this->cgiPass = str; }
 
 void			Location::setClientMaxBodySize(const int& i)
 { this->clientMaxBodySize = i; }
+
