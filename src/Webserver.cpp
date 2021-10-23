@@ -323,6 +323,10 @@ int		Webserver::findServer(Client& client)
 		host.erase(found);
 	}
 
+	if (host == "localhost"){
+		host = "127.0.0.1";
+	}
+
 	for (it = server.begin(); it != server.end(); ++it)
 		if ((*it).getIpAddress() == host && (*it).getPort() == port)
 		{
