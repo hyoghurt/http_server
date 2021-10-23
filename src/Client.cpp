@@ -61,7 +61,7 @@ const int&			Client::getReadByte() const
 { return this->readByte; }
 
 const std::string	Client::getRequestTarget()
-{ 
+{
 	std::map<std::string, std::string>::iterator	it;
 
 	it = json_request.find("request_target");
@@ -71,7 +71,7 @@ const std::string	Client::getRequestTarget()
 }
 
 const std::string	Client::getRequestMethod()
-{ 
+{
 	std::map<std::string, std::string>::iterator	it;
 
 	it = json_request.find("method");
@@ -81,7 +81,7 @@ const std::string	Client::getRequestMethod()
 }
 
 const std::string	Client::getRequestHost(void)
-{ 
+{
 	std::map<std::string, std::string>::iterator	it;
 
 	it = json_request.find("Host");
