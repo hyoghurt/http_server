@@ -1,22 +1,18 @@
 #include "Webserver.hpp"
 
-//CONSTRUCTOR__________________________________________________________________
 Webserver::Webserver() {}
-//COPY_________________________________________________________________________
 Webserver::Webserver(const Webserver& oth) { *this = oth; }
-//DESTRUCTOR___________________________________________________________________
 Webserver::~Webserver()
 {
-	std::vector<int>::iterator	it;
+	std::vector<int>::iterator		it;
+	std::vector<Client>::iterator	it_c;
 
 	for (it = listenSocket.begin(); it != listenSocket.end(); ++it)
-	{
-		std::cout << "Webserver: Close socket listen: "
-		<< std::to_string(*it) << '\n';;
 		close (*it);
-	}
+	for (it_c = client.begin(); it_c != client.end(); ++it_c)
+		close ((*it_c).getSocket());
 }
-//OPERATOR=____________________________________________________________________
+
 Webserver&	Webserver::operator= (const Webserver& oth)
 {
 	this->server = oth.server;
@@ -24,9 +20,7 @@ Webserver&	Webserver::operator= (const Webserver& oth)
 	this->listenSocket = oth.listenSocket;
 	return *this;
 }
-//CONF_PARSER__________________________________________________________________
-void		Webserver::setServer(const Server& serv)
-{ server.push_back(serv); }
+
 //CREATE_LISTEN_SOCKET_________________________________________________________
 int			Webserver::createSocketListen()
 {
@@ -331,7 +325,10 @@ int		Webserver::findServer(Client& client)
 
 	for (it = server.begin(); it != server.end(); ++it)
 		if ((*it).getIpAddress() == host && (*it).getPort() == port)
+		{
 			client.setServer(&(*it));
+			return (0);
+		}
 
 	for (it = server.begin(); it != server.end(); ++it)
 		if ((*it).getServerName() == host)

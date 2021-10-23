@@ -9,13 +9,13 @@
 # include <fstream> //open, ifstream
 # include <unistd.h> //close
 
-# include "add_func.hpp"
+# include "addFunctions.hpp"
 # include "Server.hpp"
 
 class	Client
 {
 	public:
-		Client(const int& c_socket, struct sockaddr_in addr);
+		Client(const int& cSocket, struct sockaddr_in addr);
 		Client(const Client& oth);
 		~Client();
 
@@ -38,7 +38,7 @@ class	Client
 		const int&			getChunked() const;
 		const bool&			getFWrite() const;
 
-		void	setSocket(const int &c_socket);
+		void	setSocket(const int &cSocket);
 		void	setTimeStart();
 		void	setRequest(const std::string &request);
 		void	setRequestAppend(const std::string& str);
@@ -110,17 +110,17 @@ class	Client
 		void	debug_show_arg(char** env);
 
 	private:
-		int									c_socket;
+		int									cSocket;
 		time_t								timeStart;
 		std::string							request;
 		std::string							response;
 		std::string							header;
 		std::string							body;
 		int									readByte;
-		std::map<std::string, std::string>	json_request;
+		std::map<std::string, std::string>	jsonRequest;
 		Server*								server;
 		Location*							location;
-		std::string							path_file;
+		std::string							pathFile;
 		std::map<std::string, std::string>	responseHeader;
 		std::map<std::string, std::string>	envCgi;
 		struct sockaddr_in					addr;
