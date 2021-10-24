@@ -5,7 +5,6 @@
 //# define CONF_DEFAULT "tester/my_tester/conf.conf"
 
 # include <fcntl.h> //fntnl
-//# include <csignal>
 
 # include "Client.hpp"
 
@@ -18,7 +17,6 @@ class	Webserver
 
 		Webserver&	operator= (const Webserver& oth);
 		bool		checkCloseClient(Client& client);
-		static void	signal_handler(int sig) { /*this->~Webserver();*/ }
 
 //CONF_PARSER__________________________________________________________________
 		int		readConfigFile(const char* fileName);

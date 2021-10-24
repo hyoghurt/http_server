@@ -20,7 +20,6 @@ std::string					convert_base16_to_str(const size_t& n);
 size_t						convert_str_to_base16(const std::string& str);
 std::vector<std::string>	split_by_space(const std::string& str);
 std::string					absolutePathOfExec(const std::string& execName);
-int							check_host(const std::string &host);
 std::string					get_status_code(const int& code);
 std::pair<std::string, std::string>		returnKeyVal(const std::string& str);
 

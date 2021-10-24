@@ -15,7 +15,6 @@ Client::Client(const Client& oth)
 
 Client::~Client()
 {}
-//{ std::cout << "distrutor client" << std::endl; }
 
 
 Client&		Client::operator= (const Client& oth)
@@ -286,7 +285,6 @@ int				Client::locationFind()
 			if (pathFile[pathFile.size() - 1] != '/')
 			{
 				pathFile.push_back('/');
-				std::cout << pathFile << std::endl;
 				setResponseHeaderLocation(getRequestTarget() + "/");
 			}
 

@@ -1,2 +1,2 @@
 #!/bin/sh
-./webserv tester/my_tester/conf.conf
+./webserv tester/my_tester/my.conf
